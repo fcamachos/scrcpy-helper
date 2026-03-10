@@ -12,12 +12,14 @@ Una interfaz gráfica sencilla y ligera construida en Python con Tkinter para ge
 ## 🛠 Requisitos Previos
 
 **En Arch Linux**
-sudo pacman -S android-tools scrcpy
+
+`sudo pacman -S android-tools scrcpy`
 
 **En Ubuntu/Debian**
-sudo apt install adb scrcpy
 
-    **Nota**: Recuerda tener activada la Depuración USB en las opciones de desarrollador de tu dispositivo Android.
+`sudo apt install adb scrcpy`
+
+**Nota**: Recuerda tener activada la Depuración USB en las opciones de desarrollador de tu dispositivo Android.
 
 ## 📥 Instalación y Uso
 
@@ -42,4 +44,3 @@ Para garantizar que el archivo no ha sido alterado, puedes verificar su hash SHA
     - Si todo es correcto, verás: `scrcpy-tool: La correspondencia es exacta`.
 
 
-    
