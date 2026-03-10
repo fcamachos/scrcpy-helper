@@ -90,6 +90,8 @@ def conectar_dispositivo(serial, opciones):
         print(f"Error: {e}")
 
 if __name__ == "__main__":
+    print("scrcpy-helper")
+    print("Script compilado con Nuitka. Revisa el hash en https://github.com/fcamachos/scrcpy-helper")
     devices = get_connected_devices()
     
     if not devices:
