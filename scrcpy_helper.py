@@ -97,7 +97,7 @@ if __name__ == "__main__":
     if not devices:
         root = tk.Tk()
         root.withdraw()
-        messagebox.showwarning("Sin dispositivos", "No se detectaron dispositivos por ADB.")
+        messagebox.showwarning("Sin dispositivos", "No se detectaron dispositivos conectados por ADB.")
     else:
         root = tk.Tk()
         app = ScrcpyGui(root, devices)
