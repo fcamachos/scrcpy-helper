@@ -36,7 +36,7 @@ jobs:
             scrcpy_helper.py  
 
       - name: Generate SHA-256 Checksum
-        run: sha256sum scrcpy-tool > checksums.txt
+        run: sha256sum scrcpy-helper > checksums.txt
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
