@@ -27,8 +27,11 @@ Una interfaz gráfica sencilla y ligera construida en Python con Tkinter para ge
 - Dale permisos de ejecución al archivo:
   
 **Bash**
-- chmod +x scrcpy-tool
-- ./scrcpy-tool
+
+    chmod +x scrcpy-tool
+
+    ./scrcpy-tool
+
 
 **Interfaz Gráfico**
 - Click derecho, propiedades, marcar "es ejecutable"
