@@ -46,8 +46,19 @@ Para garantizar que el archivo no ha sido alterado, puedes verificar su hash SHA
     - sha256sum -c checksums.txt
     - Si todo es correcto, verás: `scrcpy-tool: La correspondencia es exacta`.
 
+## Compilación manual
+
+Descarga los archivos fuente y ejecuta:
+
+    python3 -m nuitka \
+    --standalone \
+    --onefile \
+    --enable-plugin=tk-inter \
+    --linux-icon=ico.png \
+    --remove-output \
+    -o scrcpy-helper \
+    scrcpy_helper.py
+
 
 ## ToDo
-- agregar opciones de scrcpy
-- averiguar si se pueden guardar los estados de los botones activados
 - averiguar cómo cambiar el tema de la ventana y decoraciones
