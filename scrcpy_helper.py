@@ -50,6 +50,12 @@ class ScrcpyGui:
         self.opt3 = tk.BooleanVar(value=True)
         tk.Checkbutton(root, text="Apagar pantalla del móvil", variable=self.opt3).pack(anchor='w', padx=50)
 
+        self.opt4 = tk.BooleanVar(value=True)
+        tk.Checkbutton(root, text="Limitar bit rate a 2M", variable=self.opt4).pack(anchor='w',padx=50)
+
+        self.opt5 = tk.BooleanVar(value=True)
+        tk.Checkbutton(root, text="Limitar a 60 fps", variable=self.opt5).pack(anchor='w',padx=50)
+
         # --- Botón Conectar ---
         tk.Button(root, text="Conectar", command=self.ejecutar, bg="#2196F3", fg="white").pack(pady=20)
 
@@ -64,15 +70,19 @@ class ScrcpyGui:
         if self.opt1.get(): params.append("1")
         if self.opt2.get(): params.append("2")
         if self.opt3.get(): params.append("3")
+        if self.opt4.get(): params.append("4")
+        if self.opt5.get(): params.append("5")
         
-        self.root.destroy()
+        # self.root.destroy()
         conectar_dispositivo(serial, params)
 
 def get_params_string(resp):
-    parametros = "--shortcut-mod=lctrl,rctrl -w -b2M --max-fps=60 --prefer-text "
+    parametros = "--shortcut-mod=lctrl,rctrl -w --prefer-text "
     if "1" in resp: parametros += "--power-off-on-close "
     if "2" in resp: parametros += "--video-codec=h265 "
     if "3" in resp: parametros += "-S "
+    if "4" in resp: parametros += "-b2M "
+    if "5" in resp: parametros += "--max-fps=60 "
     return parametros
 
 def conectar_dispositivo(serial, opciones):
