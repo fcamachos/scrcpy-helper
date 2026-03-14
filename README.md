@@ -8,6 +8,8 @@ Una interfaz gráfica sencilla y ligera construida en Python con Tkinter para ge
 - Sin Dependencias de Entorno: Funciona en KDE, GNOME, XFCE o cualquier gestor de ventanas sin instalar librerías extra de GTK/Qt.
 - Portable: Disponible como binario único gracias a Nuitka.
 - Privacidad: Ejecución 100% local y transparente.
+- Se guardan las opciones elegidas previamente en `~/.config/scrcpy-helper`.
+- Botón de recarga para ver nuevos dispositivos conectados.
 
 ## 🛠 Requisitos Previos
 
@@ -59,6 +61,3 @@ Descarga los archivos fuente y ejecuta:
     -o scrcpy-helper \
     scrcpy_helper.py
 
-
-## ToDo
-- averiguar cómo cambiar el tema de la ventana y decoraciones
