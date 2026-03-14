@@ -108,7 +108,7 @@ class ScrcpyGui:
         
         self.combo = ttk.Combobox(self.device_frame, values=[f"{d[1]} ({d[0]})" for d in dispositivos], state="readonly")
         if dispositivos: self.combo.current(0)
-        self.combo.pack(pady=(5,20), fill="x")
+        self.combo.pack(side="left", expand=True, padx=(0,5), fill="x")
 
         self.btn_refresh = ttk.Button(self.device_frame, text="↻", style="Refresh.TButton", command=self.refresh_devices)
         self.btn_refresh.pack(side="right")
