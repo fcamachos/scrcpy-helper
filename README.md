@@ -47,3 +47,7 @@ Para garantizar que el archivo no ha sido alterado, puedes verificar su hash SHA
     - Si todo es correcto, verás: `scrcpy-tool: La correspondencia es exacta`.
 
 
+## ToDo
+- agregar opciones de scrcpy
+- averiguar si se pueden guardar los estados de los botones activados
+- averiguar cómo cambiar el tema de la ventana y decoraciones

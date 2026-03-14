@@ -2,6 +2,32 @@ import subprocess as sbp
 import shlex
 import tkinter as tk
 from tkinter import messagebox, ttk
+import json
+from pathlib import Path 
+
+CONFIG_DIR = Path.home() / ".config" / "scrcpy-helper"
+CONFIG_FILE = CONFIG_DIR / "config.json"
+
+def load_settings():
+    """ Carga los ajustes """
+    default_settings = {"opt1": True, "opt2": True, "opt3": True, "opt4": True, "opt5": True}
+    
+    if not CONFIG_FILE.exists():
+        return default_settings
+    
+    try:
+        with open(CONFIG_FILE, "r") as f: 
+            return {**default_settings, **json.load(f)}
+    except:
+        return default_settings
+
+def save_settings(settings):
+    """ Guarda los ajustes """ 
+    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    with open(CONFIG_FILE, "w") as f: 
+        json.dump(settings, f)
+
+
 
 def get_connected_devices():
     """Obtiene una lista de dispositivos conectados mediante adb."""
@@ -28,8 +54,11 @@ class ScrcpyGui:
         self.root = root
         self.root.title("Configuración de Scrcpy")
         self.dispositivos = dispositivos
-        self.seleccion = None
-        self.params_res = []
+
+        self.saved_data = load_settings()
+
+        #self.seleccion = None
+        #self.params_res = []
 
         # --- Selección de Dispositivo ---
         tk.Label(root, text="Selecciona un dispositivo:", font=('bold')).pack(pady=5)
@@ -42,19 +71,16 @@ class ScrcpyGui:
         tk.Label(root, text="Opciones de conexión:", font=('bold')).pack(pady=10)
         
         self.opt1 = tk.BooleanVar(value=True)
-        tk.Checkbutton(root, text="Power off on close", variable=self.opt1).pack(anchor='w', padx=50)
-        
         self.opt2 = tk.BooleanVar(value=True)
-        tk.Checkbutton(root, text="Codec H265", variable=self.opt2).pack(anchor='w', padx=50)
-        
         self.opt3 = tk.BooleanVar(value=True)
-        tk.Checkbutton(root, text="Apagar pantalla del móvil", variable=self.opt3).pack(anchor='w', padx=50)
-
         self.opt4 = tk.BooleanVar(value=True)
-        tk.Checkbutton(root, text="Limitar bit rate a 2M", variable=self.opt4).pack(anchor='w',padx=50)
-
         self.opt5 = tk.BooleanVar(value=True)
-        tk.Checkbutton(root, text="Limitar a 60 fps", variable=self.opt5).pack(anchor='w',padx=50)
+        
+        tk.Checkbutton(root, text="Power off on close", variable=self.opt1).pack(anchor='w', padx=50)
+        tk.Checkbutton(root, text="Codec H265", variable=self.opt2).pack(anchor='w', padx=50)
+        tk.Checkbutton(root, text="Apagar pantalla del móvil", variable=self.opt3).pack(anchor='w', padx=50)
+        tk.Checkbutton(root, text="Limitar bit rate a 2M", variable=self.opt4).pack(anchor='w',padx=50)
+        tk.Checkbutton(root, text="Limitar a 60 fps", variable=self.opt5).pack(anchor='w',padx=50)      
 
         # --- Botón Conectar ---
         tk.Button(root, text="Conectar", command=self.ejecutar, bg="#2196F3", fg="white").pack(pady=20)
@@ -64,6 +90,15 @@ class ScrcpyGui:
         if idx == -1:
             messagebox.showwarning("Advertencia", "Por favor selecciona un dispositivo")
             return
+
+        current_settings = {
+            "opt1": self.opt1.get(),
+            "opt2": self.opt2.get(),
+            "opt3": self.opt3.get(),
+            "opt4": self.opt4.get(),
+            "opt5": self.opt5.get()
+        }
+        save_settings(current_settings)
         
         serial = self.dispositivos[idx][0]
         params = []
