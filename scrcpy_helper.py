@@ -11,7 +11,13 @@ CONFIG_DIR = Path.home() / ".config" / "scrcpy-helper"
 CONFIG_FILE = CONFIG_DIR / "config.json"
 
 def load_settings():
-    default_settings = {"opt1": True, "opt2": False, "opt3": True, "opt4": True, "opt5": True}
+    default_settings = {
+        "opt1": False, 
+        "opt2": False, 
+        "opt3": True, 
+        "opt4": True, 
+        "opt5": True
+        }
     if not CONFIG_FILE.exists():
         return default_settings
     try:
@@ -44,19 +50,63 @@ def get_connected_devices():
 class ScrcpyGui:
     def __init__(self, root, dispositivos):
         self.root = root
-        self.root.title("Scrcpy-Helper")
-        self.dispositivos = dispositivos
-        self.log_queue = queue.Queue()
-        self.saved_data = load_settings()
-
-        # --- Contenedor Superior (Configuración) ---
-        self.main_frame = tk.Frame(root)
-        self.main_frame.pack(pady=10, padx=10, fill="x")
         
-        tk.Label(self.main_frame, text="Dispositivo:", font=('bold')).grid(row=0, column=0, sticky="w")
-        self.combo = ttk.Combobox(self.main_frame, values=[f"{d[1]} ({d[0]})" for d in dispositivos], width=35)
+        self.root.title("Scrcpy-Helper")
+        self.root.geometry("500x600")
+        self.root.configure(bg="#232629")
+
+        self.dispositivos = dispositivos
+        self.log_queue = queue.Queue() 
+        self.saved_data = load_settings()
+        self.console_visible = False
+
+        self.style = ttk.Style()
+        self.style.theme_use('clam')
+
+        KDE_BLUE = "#3daee9"
+        KDE_BG = "#232629"
+        KDE_TEXT = "#eff0f1"
+        TEXT_ACCENT = "#405057"
+        SILVER_GRAY = "#e3e5e7"
+
+        self.style.configure("TFrame", 
+            background=KDE_BG)
+        self.style.configure("TLabel", 
+            background=KDE_BG, 
+            foreground=KDE_TEXT,
+            font=("Inter", 10))
+        self.style.configure("TCheckbutton", 
+            background=KDE_BG, 
+            foreground=KDE_TEXT, 
+            font=("Inter", 9))
+        self.style.configure("TCombobox", 
+            fieldbackground=SILVER_GRAY, 
+            background=SILVER_GRAY, 
+            foreground=TEXT_ACCENT, 
+            font=("Inter",10))
+
+        self.style.configure("Action.TButton",
+            font=("Inter", 10, "bold"),
+            foreground="white",
+            background=KDE_BLUE,
+            padding=10)
+        self.style.map("Action.TButton", 
+            background=[('active', '#2980b9')])
+
+        self.style.configure("Refresh.TButton", 
+            font=("Inter",12), width=3)
+
+        self.container = ttk.Frame(root)
+        self.container.pack(pady=20, padx=25, fill="both", expand=True)
+
+        ttk.Label(self.container, text="Dispositivo detectado", font=("Inter", 8, "bold")).pack(anchor="w")
+        self.combo = ttk.Combobox(self.container, values=[f"{d[1]} ({d[0]})" for d in dispositivos], state="readonly")
         if dispositivos: self.combo.current(0)
-        self.combo.grid(row=0, column=1, pady=5, padx=5)
+        self.combo.pack(pady=(5,20), fill="x")
+
+        # Opciones con un LabelFrame para agrupar
+        self.options_frame = tk.LabelFrame(self.container, text=" Configuración ", bg=KDE_BG, fg=KDE_BLUE, font=("Inter", 9, "bold"), padx=15, pady=10)
+        self.options_frame.pack(fill="x", pady=10)
 
         # --- Opciones (Checklist) ---
         self.vars = {
@@ -66,27 +116,48 @@ class ScrcpyGui:
             "4": tk.BooleanVar(value=self.saved_data.get("opt4")),
             "5": tk.BooleanVar(value=self.saved_data.get("opt5"))
         }
-        
+
         texts = [
-            "Power off on close", "Codec H265", "Apagar pantalla móvil",
-            "Limitar bit rate a 2M", "Limitar a 60 fps"
+            "Power off on close", 
+            "Codec H265", 
+            "Apagar pantalla móvil",
+            "Limitar bit rate a 2M", 
+            "Limitar a 60 fps"
         ]
 
         for i, (key, var) in enumerate(self.vars.items()):
-            tk.Checkbutton(self.main_frame, text=texts[i], variable=var).grid(row=i+1, column=0, columnspan=2, sticky="w")
+            cb = ttk.Checkbutton(self.options_frame, text=texts[int(key)-1], variable=var)
+            cb.pack(anchor="w", pady=2)
+            #tk.Checkbutton(self.main_frame, text=texts[i], variable=var).grid(row=i+1, column=0, columnspan=2, sticky="w")
         
-        # --- Botón y Consola (Usando PACK en el root) ---
-        self.btn_connect = tk.Button(root, text="Conectar", command=self.start_connection, bg="#2196F3", fg="white", width=20)
-        self.btn_connect.pack(pady=10)       
+
+        # Botón de Conexión
+        self.btn_connect = ttk.Button(self.container, text="INICIAR TRANSMISIÓN", style="Action.TButton", command=self.start_connection)
+        self.btn_connect.pack(pady=20, fill="x")
         
-        tk.Label(root, text="Consola de salida:", font=('bold')).pack(anchor="w", padx=10)
-        self.log_area = scrolledtext.ScrolledText(root, height=10, state='disabled', bg="black", fg="#00FF00")
-        self.log_area.pack(pady=5, padx=10, fill="both", expand=True)
+        # --- Consola Desplegable ---
+        self.btn_toggle_console = tk.Button(root, text="▼ Mostrar Consola de Salida", 
+                                          bg="#31363b", fg=KDE_TEXT, 
+                                          relief="flat", font=("Inter", 8), 
+                                          command=self.toggle_console)
+        self.btn_toggle_console.pack(fill="x", side="bottom")
+
+        self.console_frame = ttk.Frame(root)
+        self.log_area = scrolledtext.ScrolledText(self.console_frame, height=10, state='disabled', 
+                                                 bg="#1b1e20", fg="#00ff00", 
+                                                 font=("Monospace", 9), borderwidth=0)
+        self.log_area.pack(fill="both", expand=True)
 
         self.root.after(100, self.update_logs)
 
-    def write_log(self, text):
-        self.log_queue.put(text)
+    def toggle_console(self):
+        if self.console_visible:
+            self.console_frame.pack_forget()
+            self.btn_toggle_console.config(text="▲ Mostrar Consola de Salida")
+        else:
+            self.console_frame.pack(fill="both", expand=True, side="bottom")
+            self.btn_toggle_console.config(text="▼ Ocultar Consola de Salida")
+        self.console_visible = not self.console_visible
 
     def update_logs(self):
         while not self.log_queue.empty():
@@ -99,33 +170,27 @@ class ScrcpyGui:
 
     def start_connection(self):
         idx = self.combo.current()
-        if idx == -1:
-            messagebox.showwarning("Advertencia", "Selecciona un dispositivo")
-            return
-
-        # Corrección: Acceder a los datos desde el diccionario self.vars
-        current_settings = {f"opt{k}": v.get() for k, v in self.vars.items()}
-        save_settings(current_settings)
-        
+        if idx == -1: return
         serial = self.dispositivos[idx][0]
         params = [k for k, v in self.vars.items() if v.get()]
         
-        self.btn_connect.config(state="disabled")
-        thread = threading.Thread(target=self.run_scrcpy, args=(serial, params), daemon=True)
-        thread.start()
+        # Si la consola está oculta, se muestra automáticamente al conectar
+        if not self.console_visible: self.toggle_console()
         
+        self.btn_connect.state(['disabled'])
+        threading.Thread(target=self.run_scrcpy, args=(serial, params), daemon=True).start()
+
     def run_scrcpy(self, serial, resp):
-        # Corrección: Llamar al método interno correctamente
         cmd_str = f"scrcpy -s {serial} {self.get_params_string(resp)}"
-        self.write_log(f"Ejecutando: {cmd_str}")
+        self.log_queue.put(f"[INFO] Ejecutando: {cmd_str}")
         
         process = sbp.Popen(shlex.split(cmd_str), stdout=sbp.PIPE, stderr=sbp.STDOUT, text=True)
         for line in process.stdout:
-            self.write_log(line.strip())
+            self.log_queue.put(line.strip())
         
         process.wait()
-        self.write_log(f"--- Finalizado (Código: {process.returncode}) ---")
-        self.root.after(0, lambda: self.btn_connect.config(state="normal"))    
+        self.log_queue.put(f"--- Finalizado (Código: {process.returncode}) ---")
+        self.root.after(0, lambda: self.btn_connect.state(['!disabled']))
 
     def get_params_string(self, resp):
         parametros = "--shortcut-mod=lctrl,rctrl -w --prefer-text "
@@ -136,13 +201,9 @@ class ScrcpyGui:
         if "5" in resp: parametros += "--max-fps=60 "
         return parametros
 
-if __name__ == "__main__":
+if __name__ == "__main__":    
     devices = get_connected_devices()
-    if not devices:
-        root = tk.Tk()
-        root.withdraw()
-        messagebox.showwarning("Sin dispositivos", "No se detectaron dispositivos ADB.")
-    else:
-        root = tk.Tk()
-        app = ScrcpyGui(root, devices)
-        root.mainloop()
+    root = tk.Tk()
+    app = ScrcpyGui(root, devices)
+    root.mainloop()
+    
