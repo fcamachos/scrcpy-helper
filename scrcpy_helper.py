@@ -96,13 +96,22 @@ class ScrcpyGui:
         self.style.configure("Refresh.TButton", 
             font=("Inter",12), width=3)
 
+        # --- Contenedor Principal ---
         self.container = ttk.Frame(root)
         self.container.pack(pady=20, padx=25, fill="both", expand=True)
 
+        # --- Selección de dispositivo ---
         ttk.Label(self.container, text="Dispositivo detectado", font=("Inter", 8, "bold")).pack(anchor="w")
-        self.combo = ttk.Combobox(self.container, values=[f"{d[1]} ({d[0]})" for d in dispositivos], state="readonly")
+        
+        self.device_frame = ttk.Frame(self.container)
+        self.device_frame.pack(fill="x", pady=(5,20))
+        
+        self.combo = ttk.Combobox(self.device_frame, values=[f"{d[1]} ({d[0]})" for d in dispositivos], state="readonly")
         if dispositivos: self.combo.current(0)
         self.combo.pack(pady=(5,20), fill="x")
+
+        self.btn_refresh = ttk.Button(self.device_frame, text="↻", style="Refresh.TButton", command=self.refresh_devices)
+        self.btn_refresh.pack(side="right")
 
         # Opciones con un LabelFrame para agrupar
         self.options_frame = tk.LabelFrame(self.container, text=" Configuración ", bg=KDE_BG, fg=KDE_BLUE, font=("Inter", 9, "bold"), padx=15, pady=10)
@@ -149,6 +158,22 @@ class ScrcpyGui:
         self.log_area.pack(fill="both", expand=True)
 
         self.root.after(100, self.update_logs)
+
+    def refresh_devices(self):
+        """Actualiza la lista de dispositivos sin cerrar la app."""
+        self.dispositivos = get_connected_devices()
+        nombres = [f"{d[1]} ({d[0]})" for d in self.dispositivos]
+        self.combo['values'] = nombres
+        
+        if self.dispositivos:
+            self.combo.current(0)
+            self.write_log(f"[INFO] Dispositivos actualizados: {len(self.dispositivos)} encontrados.")
+        else:
+            self.combo.set('')
+            self.write_log("[WARN] No se detectaron dispositivos.")
+
+    def write_log(self, text):
+        self.log_queue.put(text)
 
     def toggle_console(self):
         if self.console_visible:
