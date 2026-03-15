@@ -12,23 +12,29 @@ CONFIG_FILE = CONFIG_DIR / "config.json"
 
 def load_settings():
     default_settings = {
-        "opt1": False, 
-        "opt2": False, 
-        "opt3": True, 
-        "opt4": True, 
-        "opt5": True
+        "1": False, 
+        "2": False, 
+        "3": False, 
+        "4": False, 
+        "5": False
         }
     if not CONFIG_FILE.exists():
-        return default_settings
+        print("Archivo no encontrado, usando defaults:")
+        print(json.dumps(default_settings, indent=2))
+        return default_settings        
     try:
-        with open(CONFIG_FILE, "r") as f: 
-            return {**default_settings, **json.load(f)}
+        with open(CONFIG_FILE, "r") as f:        
+            data = json.load(f)
+            settings = {**default_settings, **data}
+            print("Settings cargados:")
+            print(json.dumps(settings, indent=2))     
+            return settings
     except:
         return default_settings
 
 def save_settings(settings):
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-    with open(CONFIG_FILE, "w") as f: 
+    with open(CONFIG_FILE, "w") as f:         
         json.dump(settings, f)
 
 def get_connected_devices():
@@ -119,11 +125,11 @@ class ScrcpyGui:
 
         # --- Opciones (Checklist) ---
         self.vars = {
-            "1": tk.BooleanVar(value=self.saved_data.get("opt1")),
-            "2": tk.BooleanVar(value=self.saved_data.get("opt2")),
-            "3": tk.BooleanVar(value=self.saved_data.get("opt3")),
-            "4": tk.BooleanVar(value=self.saved_data.get("opt4")),
-            "5": tk.BooleanVar(value=self.saved_data.get("opt5"))
+            "1": tk.BooleanVar(value=self.saved_data.get("1")),
+            "2": tk.BooleanVar(value=self.saved_data.get("2")),
+            "3": tk.BooleanVar(value=self.saved_data.get("3")),
+            "4": tk.BooleanVar(value=self.saved_data.get("4")),
+            "5": tk.BooleanVar(value=self.saved_data.get("5"))
         }
 
         texts = [
@@ -198,6 +204,8 @@ class ScrcpyGui:
         if idx == -1: return
         serial = self.dispositivos[idx][0]
         params = [k for k, v in self.vars.items() if v.get()]
+        current_settings = {k: v.get() for k, v in self.vars.items()}
+        save_settings(current_settings)        
         
         # Si la consola está oculta, se muestra automáticamente al conectar
         if not self.console_visible: self.toggle_console()
