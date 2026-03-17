@@ -1,6 +1,8 @@
-# 📱 Scrcpy-Helper
+# 📱 Scrcpy-Helper (v1.2.1)
 
 Una interfaz gráfica sencilla y ligera construida en Python con Tkinter para gestionar conexiones de [scrcpy](https://github.com/Genymobile/scrcpy?tab=readme-ov-file) con detección dinámica de dispositivos.
+
+(Compatible con scrcpy(v3.3.4))
 
 ![main screen](./img/main.png)
 
@@ -95,7 +97,7 @@ Descarga los archivos fuente y ejecuta:
 
 **Avanzado**
 
-Cuadro de texto para comandos personalizados
+Cuadro de texto para comandos personalizados. Para más información, vea la [documentación](https://github.com/Genymobile/scrcpy/tree/master/doc).
 
 
 ## Referencias
