@@ -179,6 +179,7 @@ class ScrcpyGui:
 
     def refresh_devices(self):
         self.dispositivos = get_connected_devices()
+        self.write_log(f"[INFO] Dispositivos: {self.dispositivos}")
         self.combo['values'] = [f"{d[1]} ({d[0]})" for d in self.dispositivos]
         if self.dispositivos: self.combo.current(0)
 
@@ -187,8 +188,7 @@ class ScrcpyGui:
         if idx == -1: return
         serial = self.dispositivos[idx][0]
         save_settings({k: v.get() for k, v in self.vars.items()})
-        if not self.console_visible: self.toggle_console()
-        self.btn_connect.state(['disabled'])
+        if not self.console_visible: self.toggle_console()        
         threading.Thread(target=self.run_scrcpy, args=(serial,), daemon=True).start()
 
     def run_scrcpy(self, serial):
