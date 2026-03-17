@@ -2,6 +2,8 @@
 
 Una interfaz gráfica sencilla y ligera construida en Python con Tkinter para gestionar conexiones de [scrcpy](https://github.com/Genymobile/scrcpy?tab=readme-ov-file) con detección dinámica de dispositivos.
 
+![main screen](./img/main.png)
+
 ## 🚀 Características
 
 - Detección Automática: Detecta tus móviles vía ADB al instante.
