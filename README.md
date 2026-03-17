@@ -61,3 +61,36 @@ Descarga los archivos fuente y ejecuta:
     -o scrcpy-helper \
     scrcpy_helper.py
 
+
+## Tabs con opciones
+
+**Video**
+
+- `--video-codec=h265` "Usar códec h265"
+- `-m {max-res}` "limitar la resolución a max-res (por ejemplo 1024)"
+- `-b {Mbps}` "limitar el bit rate a Mbps (default 8M)"
+- `--max-fps={fps}` "limitar los frames a fps"
+- `--video-source=camera` "Mostrar la cámara"
+- `--no-video` "Deshabilitar el video"
+
+
+**Control / Audio**
+
+- `-S` "Apagar pantalla del dispositivo"
+- `-w` "Mantener encendido"
+- `-power-off-on-close` "Apagar al cerrar la aplicación"
+- `-t` "Mostrar toques"
+- `-n` "Deshabilitar el control"
+- `--no-audio` "Deshabilitar el audio"
+- `--audio-source=mic` "Capturar el micrófono"
+
+**Teclado**
+
+- `--prefer-text` "Preferir eventos de texto"
+- `--raw-key-events` "Forzar raw key events"
+- `--no-key-repeat` "Evitar repetición de teclas"
+
+**Avanzado**
+
+Cuadro de texto para comandos personalizados
+
