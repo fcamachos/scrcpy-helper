@@ -6,6 +6,8 @@ import json
 from pathlib import Path 
 import threading
 import queue
+import os 
+import sys
 
 # --- Configuración de Persistencia ---
 CONFIG_DIR = Path.home() / ".config" / "scrcpy-helper"
@@ -36,6 +38,13 @@ def get_connected_devices():
         return [(l.split()[0], next((p.split(':')[1] for p in l.split() if p.startswith('model:')), "Desconocido").replace('_', ' ')) 
                 for l in lineas if l.strip() and "device " in l]
     except: return []
+
+def get_resource_path(relative_path):
+    """ Obtiene la ruta absoluta para recursos, compatible con Nuitka y dev """
+    if hasattr(sys, '_MEIPASS'): 
+        return os.path.join(sys._MEIPASS, relative_path)
+    # Nuitka usa __file__ para referirse a la ubicación del binario/script
+    return os.path.join(os.path.abspath(os.path.dirname(__file__)), relative_path)
 
 class ScrcpyGui:
     def __init__(self, root, dispositivos):
@@ -76,7 +85,8 @@ class ScrcpyGui:
         self.logo_frame.pack(pady=(20, 10))
         
         try:            
-            self.logo_img = tk.PhotoImage(file="ico.png")            
+            img_path = get_resource_path("ico.png")       
+            self.logo_img = tk.PhotoImage(file=img_path)
             self.logo_label = tk.Label(self.logo_frame, image=self.logo_img, bg="#232629")
             self.logo_label.pack()
         except Exception as e:

@@ -32,6 +32,7 @@ jobs:
             --standalone \
             --onefile \
             --enable-plugin=tk-inter \
+            --include-data-files=ico.png=ico.png \
             --linux-icon=ico.png \
             --remove-output \
             -o scrcpy-helper \
