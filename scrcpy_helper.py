@@ -56,10 +56,16 @@ def get_connected_devices():
 class ScrcpyGui:
     def __init__(self, root, dispositivos):
         self.root = root
+
+        KDE_BLUE = "#3daee9"
+        KDE_BG = "#232629"
+        KDE_TEXT = "#eff0f1"
+        TEXT_ACCENT = "#405057"
+        SILVER_GRAY = "#e3e5e7"
         
-        self.root.title("Scrcpy-Helper")
-        self.root.geometry("500x600")
-        self.root.configure(bg="#232629")
+        self.root.title("Scrcpy Helper")
+        self.root.geometry("500x700")
+        self.root.configure(bg=KDE_BG)
 
         self.dispositivos = dispositivos
         self.log_queue = queue.Queue() 
@@ -69,11 +75,7 @@ class ScrcpyGui:
         self.style = ttk.Style()
         self.style.theme_use('clam')
 
-        KDE_BLUE = "#3daee9"
-        KDE_BG = "#232629"
-        KDE_TEXT = "#eff0f1"
-        TEXT_ACCENT = "#405057"
-        SILVER_GRAY = "#e3e5e7"
+        
 
         self.style.configure("TFrame", 
             background=KDE_BG)
@@ -81,6 +83,23 @@ class ScrcpyGui:
             background=KDE_BG, 
             foreground=KDE_TEXT,
             font=("Inter", 10))
+        
+        self.style.configure("TNotebook",
+            background=KDE_BG, 
+            borderwidth=0)
+        self.style.configure("TNotebook.Tab",
+            background="#31363b", foreground=KDE_TEXT, padding=[10,5])
+        self.style.map("TNotebook.Tab",
+            background=["selected", KDE_BLUE], foreground=[("selected", "white")])
+        
+        # --- Sección Superior: Dispositivo ---
+        self.top_frame = ttk.Frame(root)
+        self.top_frame.pack(pady=15, padx=20, fill="x")
+
+        ttk.Label(self.top_frame, text="Dispositivo:", font=("Inter", 8, "bold")).pack(anchor="w")
+        
+        
+        
         self.style.configure("TCheckbutton", 
             background=KDE_BG, 
             foreground=KDE_TEXT, 
@@ -103,7 +122,7 @@ class ScrcpyGui:
             font=("Inter",12), width=3)
 
         # --- Contenedor Principal ---
-        self.container = ttk.Frame(root)
+        #self.container = ttk.Frame(root)
         self.container.pack(pady=20, padx=25, fill="both", expand=True)
 
         # --- Selección de dispositivo ---
