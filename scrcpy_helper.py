@@ -113,7 +113,8 @@ class ScrcpyGui:
         self.fill_tabs()
 
         self.btn_connect = ttk.Button(self.root, text="INICIAR CONEXIÓN", command=self.start_connection)
-        self.btn_connect.pack(pady=15, padx=20, fill="x")        
+        self.btn_connect.pack(pady=15, padx=20, fill="x")
+        self.root.bind('<space>', lambda event: self.start_connection())
         self.setup_console()
 
     def fill_tabs(self):
