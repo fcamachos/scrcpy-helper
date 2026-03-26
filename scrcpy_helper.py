@@ -222,4 +222,4 @@ class ScrcpyGui:
 if __name__ == "__main__":
     root = tk.Tk()
     app = ScrcpyGui(root, get_connected_devices())
-    root.mainloop()
+    root.mainloop() 
