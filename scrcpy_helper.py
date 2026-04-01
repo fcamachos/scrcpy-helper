@@ -26,6 +26,7 @@ def get_subprocess_kwargs():
 
 def load_settings():
     default_settings = {
+        "language": "es",
         "codec_h265": False, "max_res": "1024", "bitrate": "8", "max_fps": "60",
         "video_camera": False, "no_video": False,
         "turn_off_screen": False, "stay_awake": True, "power_off": False,
@@ -65,9 +66,13 @@ class ScrcpyGui:
         self.saved_data = load_settings()
         self.console_visible = False
 
+        # --- Sistema de Traducción ---
+        self.lang = self.saved_data.get("language", "es")
+        self.translations = self.load_language(self.lang)
+
         # --- Colores KDE Breeze ---
         KDE_BLUE, KDE_BG, KDE_TEXT, SILVER_GRAY, TEXT_ACCENT = "#3daee9", "#232629", "#eff0f1", "#e3e5e7", "#405057"
-        self.root.title("Scrcpy-Helper")
+        self.root.title(self._("app_title"))
         self.root.geometry("580x820") 
         self.root.configure(bg=KDE_BG)
 
@@ -90,6 +95,29 @@ class ScrcpyGui:
         self.setup_ui()
         self.root.after(100, self.update_logs)
 
+    def on_language_change(self, event=None):        
+        save_settings({k: v.get() for k, v in self.vars.items()})        
+        # 2. Avisar al usuario que debe reiniciar
+        messagebox.showinfo(
+            self._("app_title"), 
+            self._("msg_restart")
+        )
+
+    def load_language(self, lang_code):
+        lang_file = get_resource_path(os.path.join("locales", f"{lang_code}.json"))
+        try:
+            with open(lang_file, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except FileNotFoundError:
+            # Failsafe: Si no encuentra el idioma, intenta cargar español
+            if lang_code != "es":
+                return self.load_language("es")
+            return {} # Si también falla el español, devuelve diccionario vacío
+
+    def _(self, key):
+        # Si la clave no existe, muestra [clave] para evitar crashes
+        return self.translations.get(key, f"[{key}]")
+
     def setup_ui(self):
         # --- SECCIÓN: Logo ---
         self.logo_frame = ttk.Frame(self.root)
@@ -100,15 +128,14 @@ class ScrcpyGui:
             self.logo_img = tk.PhotoImage(file=img_path)
             self.logo_label = tk.Label(self.logo_frame, image=self.logo_img, bg="#232629")
             self.logo_label.pack()
-        except Exception as e:
-            # Si no encuentra la imagen, ponemos un placeholder de texto para no romper la UI
+        except Exception:
             tk.Label(self.logo_frame, text="📱 SCRCPY HELPER", font=("Inter", 16, "bold"), 
                      bg="#232629", fg="#3daee9").pack()
 
         # Superior: Dispositivo
         top = ttk.Frame(self.root)
         top.pack(pady=10, padx=20, fill="x")
-        ttk.Label(top, text="Dispositivo:", font=("Inter", 8, "bold")).pack(anchor="w")
+        ttk.Label(top, text=self._("lbl_device"), font=("Inter", 8, "bold")).pack(anchor="w")
         
         self.combo_frame = ttk.Frame(top)
         self.combo_frame.pack(fill="x", pady=5)
@@ -126,14 +153,14 @@ class ScrcpyGui:
         self.tab_keys = ttk.Frame(self.notebook, padding=15)
         self.tab_adv = ttk.Frame(self.notebook, padding=15)
 
-        self.notebook.add(self.tab_video, text=" 📺 Video ")
-        self.notebook.add(self.tab_audio, text=" 🔊 Control/Audio ")
-        self.notebook.add(self.tab_keys, text=" ⌨️ Teclado ")
-        self.notebook.add(self.tab_adv, text=" ⚙️ Avanzado ")
+        self.notebook.add(self.tab_video, text=self._("tab_video"))
+        self.notebook.add(self.tab_audio, text=self._("tab_audio"))
+        self.notebook.add(self.tab_keys, text=self._("tab_keys"))
+        self.notebook.add(self.tab_adv, text=self._("tab_adv"))
 
         self.fill_tabs()
 
-        self.btn_connect = ttk.Button(self.root, text="INICIAR CONEXIÓN", command=self.start_connection)
+        self.btn_connect = ttk.Button(self.root, text=self._("btn_connect"), command=self.start_connection)
         self.btn_connect.pack(pady=15, padx=20, fill="x")
         self.root.bind('<space>', lambda event: self.start_connection())
         self.setup_console()
@@ -141,34 +168,40 @@ class ScrcpyGui:
     def fill_tabs(self):
         # Video
         f_v = self.tab_video
-        ttk.Checkbutton(f_v, text="Usar códec H.265 (HEVC)", variable=self.vars["codec_h265"]).grid(row=0, column=0, columnspan=2, sticky="w", pady=2)
-        rows = [("Resolución máx (-m):", "max_res"), ("Bitrate Mbps (-b):", "bitrate"), ("Frames máx (--max-fps):", "max_fps")]
+        ttk.Checkbutton(f_v, text=self._("chk_h265"), variable=self.vars["codec_h265"]).grid(row=0, column=0, columnspan=2, sticky="w", pady=2)
+        rows = [(self._("lbl_max_res"), "max_res"), (self._("lbl_bitrate"), "bitrate"), (self._("lbl_max_fps"), "max_fps")]
         for i, (txt, var) in enumerate(rows, 1):
             ttk.Label(f_v, text=txt).grid(row=i, column=0, sticky="w", pady=5)
             ttk.Entry(f_v, textvariable=self.vars[var], width=10).grid(row=i, column=1, sticky="w", padx=10)
-        ttk.Checkbutton(f_v, text="Mostrar cámara", variable=self.vars["video_camera"]).grid(row=4, column=0, columnspan=2, sticky="w", pady=(10,2))
-        ttk.Checkbutton(f_v, text="Deshabilitar video", variable=self.vars["no_video"]).grid(row=5, column=0, columnspan=2, sticky="w", pady=2)
+        ttk.Checkbutton(f_v, text=self._("chk_camera"), variable=self.vars["video_camera"]).grid(row=4, column=0, columnspan=2, sticky="w", pady=(10,2))
+        ttk.Checkbutton(f_v, text=self._("chk_no_video"), variable=self.vars["no_video"]).grid(row=5, column=0, columnspan=2, sticky="w", pady=2)
 
         # Control/Audio
         f_a = self.tab_audio
-        opts_a = [("Apagar pantalla (-S)", "turn_off_screen"), ("Mantener encendido (-w)", "stay_awake"),
-                  ("Apagar al cerrar", "power_off"), ("Mostrar toques (-t)", "show_touches"),
-                  ("Deshabilitar control (-n)", "no_control"), ("Deshabilitar audio", "no_audio"),
-                  ("Capturar micrófono", "mic_source")]
+        opts_a = [(self._("chk_turn_off_screen"), "turn_off_screen"), (self._("chk_stay_awake"), "stay_awake"),
+                  (self._("chk_power_off"), "power_off"), (self._("chk_show_touches"), "show_touches"),
+                  (self._("chk_no_control"), "no_control"), (self._("chk_no_audio"), "no_audio"),
+                  (self._("chk_mic_source"), "mic_source")]
         for txt, var in opts_a: ttk.Checkbutton(f_a, text=txt, variable=self.vars[var]).pack(anchor="w", pady=2)
 
         # Teclado
         f_k = self.tab_keys
-        opts_k = [("Preferir eventos de texto", "prefer_text"), ("Forzar raw keys", "raw_key"), ("No repetir teclas", "no_repeat")]
+        opts_k = [(self._("chk_prefer_text"), "prefer_text"), (self._("chk_raw_key"), "raw_key"), (self._("chk_no_repeat"), "no_repeat")]
         for txt, var in opts_k: ttk.Checkbutton(f_k, text=txt, variable=self.vars[var]).pack(anchor="w", pady=2)
 
         # Avanzado
         f_ad = self.tab_adv
-        ttk.Label(f_ad, text="Argumentos extra:").pack(anchor="w")
+        ttk.Label(f_ad, text=self._("lbl_custom_args")).pack(anchor="w")
         ttk.Entry(f_ad, textvariable=self.vars["custom_args"]).pack(fill="x", pady=5)
+        
+        # Selector de idioma
+        ttk.Label(f_ad, text=self._("lbl_language")).pack(anchor="w", pady=(15, 0))
+        self.combo_lang = ttk.Combobox(f_ad, values=["es", "en", "ja"], state="readonly", textvariable=self.vars["language"])
+        self.combo_lang.pack(fill="x", pady=5)
+        self.combo_lang.bind("<<ComboboxSelected>>", self.on_language_change)
 
     def setup_console(self):
-        self.btn_toggle_console = tk.Button(self.root, text="▲ Mostrar Logs", bg="#31363b", fg="#eff0f1", relief="flat", command=self.toggle_console)
+        self.btn_toggle_console = tk.Button(self.root, text=self._("btn_show_logs"), bg="#31363b", fg="#eff0f1", relief="flat", command=self.toggle_console)
         self.btn_toggle_console.pack(fill="x", side="bottom")
         self.console_frame = ttk.Frame(self.root)
         self.log_area = scrolledtext.ScrolledText(self.console_frame, height=8, state='disabled', bg="#1b1e20", fg="#00ff00", font=("Monospace", 9))
@@ -177,9 +210,9 @@ class ScrcpyGui:
     def toggle_console(self):
         if self.console_visible: self.console_frame.pack_forget()
         else: self.console_frame.pack(fill="both", expand=True, side="bottom")
-        self.btn_toggle_console.config(text="▼ Ocultar Logs" if not self.console_visible else "▲ Mostrar Logs")
+        self.btn_toggle_console.config(text=self._("btn_hide_logs") if not self.console_visible else self._("btn_show_logs"))
         self.console_visible = not self.console_visible
-
+    
     def write_log(self, text): self.log_queue.put(text)
 
     def update_logs(self):
@@ -190,7 +223,7 @@ class ScrcpyGui:
 
     def refresh_devices(self):
         self.dispositivos = get_connected_devices()
-        self.write_log(f"[INFO] Dispositivos: {self.dispositivos}")
+        self.write_log(f"{self._('log_devices')} {self.dispositivos}")
         self.combo['values'] = [f"{d[1]} ({d[0]})" for d in self.dispositivos]
         if self.dispositivos: self.combo.current(0)
 
@@ -224,8 +257,8 @@ class ScrcpyGui:
         extra = v["custom_args"].get().strip()
         if extra: cmd.extend(shlex.split(extra))
 
-        self.write_log(f"[INFO] Ejecutando: {' '.join(cmd)}")
-        process = sbp.Popen(cmd, stdout=sbp.PIPE, stderr=sbp.STDOUT, text=True, **get_subprocess_kwargs())
+        self.write_log(f"{self._('log_executing')} {' '.join(cmd)}")
+        process = sbp.Popen(cmd, stdout=sbp.PIPE, stderr=sbp.STDOUT, text=True)
         for line in process.stdout: self.write_log(line.strip())
         process.wait()
         self.root.after(0, lambda: self.btn_connect.state(['!disabled']))
