@@ -10,8 +10,19 @@ import os
 import sys
 
 # --- Configuración de Persistencia ---
-CONFIG_DIR = Path.home() / ".config" / "scrcpy-helper"
+if os.name == 'nt': # Windows
+    CONFIG_DIR = Path(os.getenv('APPDATA')) / "scrcpy-helper"
+else: # Linux/macOS
+    CONFIG_DIR = Path.home() / ".config" / "scrcpy-helper"
+
 CONFIG_FILE = CONFIG_DIR / "config.json"
+
+def get_subprocess_kwargs():
+    kwargs = {}
+    if os.name == 'nt':
+        # Evita que se abra la ventana de CMD en Windows
+        kwargs['creationflags'] = sbp.CREATE_NO_WINDOW 
+    return kwargs
 
 def load_settings():
     default_settings = {
@@ -33,7 +44,7 @@ def save_settings(settings):
 
 def get_connected_devices():
     try:
-        resultado = sbp.run(['adb', 'devices', '-l'], capture_output=True, text=True)
+        resultado = sbp.run(['adb', 'devices', '-l'], capture_output=True, text=True, **get_subprocess_kwargs())
         lineas = resultado.stdout.strip().split('\n')[1:]
         return [(l.split()[0], next((p.split(':')[1] for p in l.split() if p.startswith('model:')), "Desconocido").replace('_', ' ')) 
                 for l in lineas if l.strip() and "device " in l]
@@ -214,7 +225,7 @@ class ScrcpyGui:
         if extra: cmd.extend(shlex.split(extra))
 
         self.write_log(f"[INFO] Ejecutando: {' '.join(cmd)}")
-        process = sbp.Popen(cmd, stdout=sbp.PIPE, stderr=sbp.STDOUT, text=True)
+        process = sbp.Popen(cmd, stdout=sbp.PIPE, stderr=sbp.STDOUT, text=True, **get_subprocess_kwargs())
         for line in process.stdout: self.write_log(line.strip())
         process.wait()
         self.root.after(0, lambda: self.btn_connect.state(['!disabled']))
