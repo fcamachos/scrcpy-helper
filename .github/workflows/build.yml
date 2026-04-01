@@ -58,7 +58,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install nuitka
+          pip install zstandard nuitka
 
       - name: Build with Nuitka (Windows)
         run: |
@@ -69,7 +69,8 @@ jobs:
             --include-data-files=ico.png=ico.png `
             --include-data-dir=locales=locales `
             --windows-icon-from-ico=ico.ico `
-            --windows-disable-console `
+            --windows-console-mode=disable `
+            --assume-yes-for-downloads `
             --remove-output `
             -o scrcpy-helper-windows.exe `
             scrcpy_helper.py
