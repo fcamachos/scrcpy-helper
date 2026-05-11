@@ -32,7 +32,7 @@ def load_settings():
         "turn_off_screen": False, "stay_awake": True, "power_off": False,
         "show_touches": False, "no_control": False, "no_audio": False, "mic_source": False,
         "prefer_text": True, "raw_key": False, "no_repeat": False,
-        "custom_args": ""
+        "custom_args": "", "tcpip": False 
     }
     if not CONFIG_FILE.exists(): return default_settings        
     try:
@@ -191,6 +191,8 @@ class ScrcpyGui:
 
         # Avanzado
         f_ad = self.tab_adv
+        opts_adv = [(self._("tcpip"), "tcpip")]
+        for txt, var in opts_adv: ttk.Checkbutton(f_ad, text=txt, variable=self.vars[var]).pack(anchor="w", pady=2)
         ttk.Label(f_ad, text=self._("lbl_custom_args")).pack(anchor="w")
         ttk.Entry(f_ad, textvariable=self.vars["custom_args"]).pack(fill="x", pady=5)
         
@@ -254,6 +256,7 @@ class ScrcpyGui:
         if v["prefer_text"].get(): cmd.append("--prefer-text")
         if v["raw_key"].get(): cmd.append("--raw-key-events")
         if v["no_repeat"].get(): cmd.append("--no-key-repeat")
+        if v["tcpip"].get(): cmd.append("--tcpip")
         extra = v["custom_args"].get().strip()
         if extra: cmd.extend(shlex.split(extra))
 

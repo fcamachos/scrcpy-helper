@@ -28,5 +28,6 @@
     "btn_hide_logs": "▼ Ocultar Logs",
     "log_devices": "[INFO] Dispositivos:",
     "log_executing": "[INFO] Ejecutando:",
-    "msg_restart": "Se requiere reiniciar la aplicación"
+    "msg_restart": "Se requiere reiniciar la aplicación",
+    "tcpip": "Conexión Wifi (requiere conexión USB al inicio)"
 }
