@@ -66,6 +66,8 @@ Descarga los archivos fuente y ejecuta:
     -o scrcpy-helper \
     scrcpy_helper.py
 
+## Densinstalación completa
+Adjunto hay un script `uninstall.sh` el cual se encargará de borrar todo rastro de este programa. 
 
 ## Tabs con opciones
 
