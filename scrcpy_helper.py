@@ -67,7 +67,7 @@ class ScrcpyGui:
         self.console_visible = False
 
         # --- Sistema de Traducción ---
-        self.lang = self.saved_data.get("language", "es")
+        self.lang = self.saved_data.get("language", "en")
         self.translations = self.load_language(self.lang)
 
         # --- Colores KDE Breeze ---
