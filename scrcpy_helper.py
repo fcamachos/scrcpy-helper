@@ -8,6 +8,8 @@ import threading
 import queue
 import os 
 import sys
+import shutil
+import stat 
 
 # --- Configuración de Persistencia ---
 if os.name == 'nt': 
@@ -61,6 +63,54 @@ def get_resource_path(relative_path):
         return os.path.join(sys._MEIPASS, relative_path)
     return os.path.join(os.path.abspath(os.path.dirname(__file__)), relative_path)
 
+def setup_linux_desktop_entry():
+    """Crea el archivo .desktop y extrae el icono en Linux la primera vez que se ejecuta."""    
+    if os.name != 'posix' or sys.platform == 'darwin':
+        return 
+
+    app_dir = Path.home() / ".local" / "share" / "applications"
+    icon_dir = Path.home() / ".local" / "share" / "icons"
+    desktop_file = app_dir / "scrcpy-helper.desktop"
+    icon_dest = icon_dir / "scrcpy-helper.png"
+    
+    if desktop_file.exists():
+        return
+
+    try:
+        app_dir.mkdir(parents=True, exist_ok=True)
+        icon_dir.mkdir(parents=True, exist_ok=True)
+
+        # Extraer el icono de Nuitka y guardarlo en el sistema
+        icon_src = get_resource_path("ico.png")
+        if os.path.exists(icon_src):
+            shutil.copy(icon_src, icon_dest)
+
+        # Obtener la ruta real del ejecutable
+        exec_path = os.path.abspath(sys.argv[0])
+
+        # Crear el contenido del archivo .desktop
+        desktop_content = f"""[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Scrcpy Helper
+Comment=Interfaz gráfica para scrcpy
+Exec="{exec_path}"
+Icon={icon_dest}
+Terminal=false
+Categories=Utility;Phone;
+StartupWMClass=ScrcpyHelper
+"""
+        with open(desktop_file, "w") as f:
+            f.write(desktop_content)
+
+        # Dar permisos de ejecución al .desktop
+        desktop_file.chmod(desktop_file.stat().st_mode | stat.S_IEXEC)
+
+        # Actualizar la base de datos de KDE/GNOME 
+        sbp.run(['update-desktop-database', str(app_dir)], capture_output=True, **get_subprocess_kwargs())
+        print("Acceso directo de escritorio creado exitosamente.")
+    except Exception as e:
+        print(f"No se pudo crear el acceso directo de Linux: {e}")
 
 class ScrcpyGui:
     def __init__(self, root):
@@ -68,9 +118,8 @@ class ScrcpyGui:
         self.log_queue = queue.Queue() 
         self.saved_data = load_settings()
         self.console_visible = False
-        self.dispositivos = []
+        self.dispositivos = []        
         
-        # --- NUEVO: Diccionario para almacenar las variables reactivas de texto ---
         self.i18n_vars = {}
 
         self.ui_defaults = {
@@ -138,7 +187,7 @@ class ScrcpyGui:
         self.notebook.tab(2, text=self._("tab_keys"))
         self.notebook.tab(3, text=self._("tab_adv"))
 
-        # Actualizar TODAS las variables reactivas (Esto cambia checkboxes, labels y botones automáticamente)
+        # Actualizar TODAS las variables reactivas 
         for json_key, var_obj in self.i18n_vars.items():
             var_obj.set(self._(json_key))
             
@@ -364,6 +413,7 @@ class ScrcpyGui:
         self.root.after(0, lambda: self.btn_connect.state(['!disabled']))
 
 if __name__ == "__main__":
-    root = tk.Tk()
+    setup_linux_desktop_entry()
+    root = tk.Tk(className="ScrcpyHelper")
     app = ScrcpyGui(root)
     root.mainloop()
