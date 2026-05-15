@@ -25,18 +25,14 @@ def get_subprocess_kwargs():
     return kwargs
 
 def load_settings():
-    default_settings = {
-        "language": "es",
-        "codec_h265": False, "max_res": "1024", "bitrate": "8", "max_fps": "60",
-        "video_camera": False, "no_video": False,
-        "turn_off_screen": False, "stay_awake": True, "power_off": False,
-        "show_touches": False, "no_control": False, "no_audio": False, "mic_source": False,
-        "prefer_text": True, "raw_key": False, "no_repeat": False,
-        "custom_args": "", "tcpip": False 
-    }
+    # Generación de perfiles
+    default_settings = { "language": "es", "profiles": {} }
     if not CONFIG_FILE.exists(): return default_settings        
     try:
-        with open(CONFIG_FILE, "r") as f: return {**default_settings, **json.load(f)}
+        with open(CONFIG_FILE, "r") as f: 
+            data = json.load(f)
+            if "profiles" not in data: data["profiles"] = {}            
+            return {**default_settings, **json.load(f)}
     except: return default_settings
 
 def save_settings(settings):
@@ -51,6 +47,19 @@ def get_connected_devices():
                 for l in lineas if l.strip() and "device " in l]
     except: return []
 
+def get_device_ip(serial):
+    """ Obtener IP de la red wifi local via adb """
+    try: 
+        resultado = sbp.run(['adb', '-s', serial, 'shell', 'ip', 'route'], capture_output=True, text=True, **get_subprocess_kwargs())
+        for line in resultado.stdout.split('\n'):
+            if 'wlan0' in line and 'src' in line: 
+                parts = line.split()
+                if 'src' in parts: 
+                    return parts[parts.index('src') + 1]
+
+    except: pass 
+    return None 
+
 def get_resource_path(relative_path):
     """ Obtiene la ruta absoluta para recursos, compatible con Nuitka y dev """
     if hasattr(sys, '_MEIPASS'): 
@@ -59,15 +68,24 @@ def get_resource_path(relative_path):
     return os.path.join(os.path.abspath(os.path.dirname(__file__)), relative_path)
 
 class ScrcpyGui:
-    def __init__(self, root, dispositivos):
+    def __init__(self, root):
         self.root = root
-        self.dispositivos = dispositivos
         self.log_queue = queue.Queue() 
         self.saved_data = load_settings()
         self.console_visible = False
+        self.dispositivos = []
+
+        self.ui_defaults = {            
+            "codec_h265": False, "max_res": "1024", "bitrate": "8", "max_fps": "60",
+            "video_camera": False, "no_video": False,
+            "turn_off_screen": False, "stay_awake": True, "power_off": False,
+            "show_touches": False, "no_control": False, "no_audio": False, "mic_source": False,
+            "prefer_text": True, "raw_key": False, "no_repeat": False,
+            "custom_args": "", "tcpip": False 
+        }
 
         # --- Sistema de Traducción ---
-        self.lang = self.saved_data.get("language", "en")
+        self.lang = self.saved_data.get("language", "es")
         self.translations = self.load_language(self.lang)
 
         # --- Colores KDE Breeze ---
@@ -88,15 +106,18 @@ class ScrcpyGui:
 
         # --- Inicializar Variables ---
         self.vars = {}
-        for key, value in self.saved_data.items():
+        for key, value in self.ui_defaults.items():
             if isinstance(value, bool): self.vars[key] = tk.BooleanVar(value=value)
             else: self.vars[key] = tk.StringVar(value=str(value))
 
+        self.vars["language"] = tk.StringVar(value=self.lang)
         self.setup_ui()
         self.root.after(100, self.update_logs)
 
-    def on_language_change(self, event=None):        
-        save_settings({k: v.get() for k, v in self.vars.items()})        
+    def on_language_change(self, event=None):     
+        self.saved_data["language"] = self.vars["language"].get()
+        save_settings(self.saved_data)   
+        # save_settings({k: v.get() for k, v in self.vars.items()})        
         # 2. Avisar al usuario que debe reiniciar
         messagebox.showinfo(
             self._("app_title"), 
@@ -108,11 +129,10 @@ class ScrcpyGui:
         try:
             with open(lang_file, 'r', encoding='utf-8') as f:
                 return json.load(f)
-        except FileNotFoundError:
-            # Failsafe: Si no encuentra el idioma, intenta cargar español
+        except FileNotFoundError:            
             if lang_code != "es":
                 return self.load_language("es")
-            return {} # Si también falla el español, devuelve diccionario vacío
+            return {} # if fails return an empty dictionary
 
     def _(self, key):
         # Si la clave no existe, muestra [clave] para evitar crashes
@@ -164,6 +184,8 @@ class ScrcpyGui:
         self.btn_connect.pack(pady=15, padx=20, fill="x")
         self.root.bind('<space>', lambda event: self.start_connection())
         self.setup_console()
+
+        self.refresh_devices()
 
     def fill_tabs(self):
         # Video
@@ -224,22 +246,85 @@ class ScrcpyGui:
         self.root.after(100, self.update_logs)
 
     def refresh_devices(self):
-        self.dispositivos = get_connected_devices()
-        self.write_log(f"{self._('log_devices')} {self.dispositivos}")
+        actives = get_connected_devices()
+        actives_serials = [d[0] for d in actives]
+
+        self.dispositivos = actives.copy()
+        profiles = self.saved_data.get("profiles", {})
+
+        # Lista de dispositivos con IP pero no conectados por USB
+        for serial, data in profiles.items():
+            if serial not in actives_serials and data.get("last_ip"):
+                model = data.get("model", lbl_saved)
+                self.dispositivos.append((serial, f"{model} 🛜 {data['last_ip']}"))
+        
+
+        # self.write_log(f"{self._('log_devices')} {self.dispositivos}")
         self.combo['values'] = [f"{d[1]} ({d[0]})" for d in self.dispositivos]
-        if self.dispositivos: self.combo.current(0)
+        if self.dispositivos: 
+            self.combo.current(0)
+            self.on_device_selected()
+        else: 
+            self.combo.set('')
+
+    def on_device_selected(self, event=None):
+        idx = self.combo.current()
+        if idx == -1: return
+        serial = self.dispositivos[idx][0]
+
+        # Cargar el perfil o usar los valores por defecto si es nuevo
+        profiles = self.saved_data.get("profiles", {})
+        profile = profiles.get(serial, self.ui_defaults)
+
+        for k, v in self.vars.items():
+            if k in profile and k != "language":
+                v.set(profile[k])
 
     def start_connection(self):
         idx = self.combo.current()
         if idx == -1: return
         serial = self.dispositivos[idx][0]
-        save_settings({k: v.get() for k, v in self.vars.items()})
-        if not self.console_visible: self.toggle_console()        
-        threading.Thread(target=self.run_scrcpy, args=(serial,), daemon=True).start()
+        full_model = self.dispositivos[idx][1]
 
-    def run_scrcpy(self, serial):
+        # Preparar la recolección de variables
+        profile = {k: v.get() for k, v in self.vars.items() if k != "language"}
+        profile["model"] = full_model.split(" 🛜")[0].strip() # Guardar nombre limpio
+
+        # Si TCP/IP está activo, intentar capturar la IP actual o mantener la anterior
+        if profile["tcpip"]:
+            ip = get_device_ip(serial)
+            if ip:
+                profile["last_ip"] = ip
+            elif serial in self.saved_data.get("profiles", {}):
+                profile["last_ip"] = self.saved_data["profiles"][serial].get("last_ip")
+        else:
+            profile["last_ip"] = None
+
+        # Guardar en memoria y a disco
+        if "profiles" not in self.saved_data: self.saved_data["profiles"] = {}
+        self.saved_data["profiles"][serial] = profile
+        save_settings(self.saved_data)
+
+        if not self.console_visible: self.toggle_console()        
+        threading.Thread(target=self.run_scrcpy, args=(serial, profile.get("last_ip")), daemon=True).start()
+
+    def run_scrcpy(self, serial, last_ip):
         v = self.vars
-        cmd = ["scrcpy", "-s", serial, "--shortcut-mod=lctrl,rctrl"]
+        cmd = ["scrcpy"]
+
+        # Verificar si el dispositivo está "offline" (solo en JSON)
+        is_offline = not any(serial == d[0] for d in get_connected_devices())
+
+        # Si está offline, tenemos la IP y tcpip activo, le pedimos a scrcpy que se conecte directamente
+        if is_offline and v["tcpip"].get() and last_ip:
+            cmd.extend([f"--tcpip={last_ip}"])
+        else:
+            # Flujo normal por cable o TCP local descubierto
+            cmd.extend(["-s", serial])
+            if v["tcpip"].get(): cmd.append("--tcpip")
+
+        cmd.append("--shortcut-mod=lctrl,rctrl")
+
         if v["codec_h265"].get(): cmd.append("--video-codec=h265")
         if v["max_res"].get(): cmd.append(f"-m{v['max_res'].get()}")
         if v["bitrate"].get(): cmd.append(f"-b{v['bitrate'].get()}M")
@@ -256,17 +341,17 @@ class ScrcpyGui:
         if v["prefer_text"].get(): cmd.append("--prefer-text")
         if v["raw_key"].get(): cmd.append("--raw-key-events")
         if v["no_repeat"].get(): cmd.append("--no-key-repeat")
-        if v["tcpip"].get(): cmd.append("--tcpip")
+        
         extra = v["custom_args"].get().strip()
         if extra: cmd.extend(shlex.split(extra))
 
         self.write_log(f"{self._('log_executing')} {' '.join(cmd)}")
-        process = sbp.Popen(cmd, stdout=sbp.PIPE, stderr=sbp.STDOUT, text=True)
+        process = sbp.Popen(cmd, stdout=sbp.PIPE, stderr=sbp.STDOUT, text=True, **get_subprocess_kwargs())
         for line in process.stdout: self.write_log(line.strip())
         process.wait()
         self.root.after(0, lambda: self.btn_connect.state(['!disabled']))
 
 if __name__ == "__main__":
-    root = tk.Tk()
-    app = ScrcpyGui(root, get_connected_devices())
-    root.mainloop() 
+    root = tk.Tk()    
+    app = ScrcpyGui(root)
+    root.mainloop()

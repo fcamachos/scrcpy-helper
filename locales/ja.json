@@ -29,5 +29,6 @@
     "log_devices": "[INFO] デバイス:",
     "log_executing": "[INFO] 実行中:",
     "msg_restart": "変更を適用するにはアプリケーションの再起動が必要です。",
-    "tcpip": "Wi-Fi接続(初回はUSB接続が必要です)"
+    "tcpip": "Wi-Fi接続(初回はUSB接続が必要です)",
+    "lbl_saved": "Saved"
 }

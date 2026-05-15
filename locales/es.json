@@ -29,5 +29,6 @@
     "log_devices": "[INFO] Dispositivos:",
     "log_executing": "[INFO] Ejecutando:",
     "msg_restart": "Se requiere reiniciar la aplicación",
-    "tcpip": "Conexión Wifi (requiere conexión USB al inicio)"
+    "tcpip": "Conexión Wifi (requiere conexión USB al inicio)",
+    "lbl_saved": "Guardado"
 }
