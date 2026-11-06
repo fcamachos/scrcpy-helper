@@ -1,7 +1,7 @@
 import subprocess as sbp
 import shlex
 import tkinter as tk
-from tkinter import ttk, scrolledtext, messagebox, simpledialog
+from tkinter import ttk, scrolledtext, messagebox
 import json
 from pathlib import Path 
 import threading
@@ -330,6 +330,17 @@ class ScrcpyGui:
         self.console_frame = ttk.Frame(self.root)
         self.log_area = scrolledtext.ScrolledText(self.console_frame, height=8, state='disabled', bg="#1b1e20", fg="#00ff00", font=("Monospace", 9))
         self.log_area.pack(fill="both", expand=True)
+        # Clic derecho: Copiar / Seleccionar todo, sin habilitar la escritura (el widget sigue 'disabled')
+        self.log_menu = tk.Menu(self.log_area, tearoff=0, bg="#31363b", fg="#eff0f1", activebackground="#3daee9", activeforeground="white")
+        self.log_menu.add_command(command=lambda: self.log_area.event_generate("<<Copy>>"))
+        self.log_menu.add_command(command=lambda: self.log_area.tag_add("sel", "1.0", "end-1c"))
+        self.log_area.bind("<Button-3>", self.show_log_menu)
+
+    def show_log_menu(self, event):
+        # Textos al abrir el menú, por si se cambió el idioma
+        self.log_menu.entryconfigure(0, label=self._("menu_copy"))
+        self.log_menu.entryconfigure(1, label=self._("menu_select_all"))
+        self.log_menu.tk_popup(event.x_root, event.y_root)
 
     def toggle_console(self):
         if self.console_visible: self.console_frame.pack_forget()
@@ -390,6 +401,30 @@ class ScrcpyGui:
         profiles = self.saved_data.get("profiles", {})
         return [device_label(d[1], d[0], profiles.get(d[0], {}).get("alias")) for d in self.dispositivos]
 
+    def ask_text(self, title, prompt, initial=""):
+        """Pide un texto con widgets ttk (mismo fondo y tema que la ventana principal). None = Cancelar."""
+        win = tk.Toplevel(self.root, bg=self.root.cget("bg"))
+        win.title(title); win.resizable(False, False); win.transient(self.root)
+        frm = ttk.Frame(win, padding=15); frm.pack(fill="both", expand=True)
+        ttk.Label(frm, text=prompt, justify="left").pack(anchor="w")
+        var, result = tk.StringVar(value=initial), []
+        entry = ttk.Entry(frm, textvariable=var, width=36); entry.pack(fill="x", pady=10)
+        def close(ok):
+            if ok: result.append(var.get())
+            win.destroy()
+        btns = ttk.Frame(frm); btns.pack(anchor="e")
+        ttk.Button(btns, text=self._("btn_cancel"), command=lambda: close(False)).pack(side="right")
+        ttk.Button(btns, text=self._("btn_ok"), command=lambda: close(True)).pack(side="right", padx=(0, 5))
+        win.bind("<Return>", lambda e: close(True)); win.bind("<Escape>", lambda e: close(False))
+        win.protocol("WM_DELETE_WINDOW", lambda: close(False))
+        win.update_idletasks()  # centrar sobre la ventana principal
+        x = self.root.winfo_rootx() + (self.root.winfo_width() - win.winfo_reqwidth()) // 2
+        y = self.root.winfo_rooty() + (self.root.winfo_height() - win.winfo_reqheight()) // 2
+        win.geometry(f"+{max(x, 0)}+{max(y, 0)}")
+        entry.focus_set(); entry.select_range(0, "end"); entry.icursor("end")
+        win.wait_visibility(); win.grab_set(); win.wait_window()
+        return result[0] if result else None
+
     def edit_alias(self):
         idx = self.combo.current()
         if idx == -1:
@@ -400,8 +435,7 @@ class ScrcpyGui:
         actual = profiles.get(serial, {}).get("alias", "")
         self.dialog_open = True  # que update_logs no abra un error encima
         try:
-            alias = simpledialog.askstring(self._("dlg_alias_title"), self._("dlg_alias_prompt").format(name=f"{desc} ({serial})"),
-                                           initialvalue=actual, parent=self.root)
+            alias = self.ask_text(self._("dlg_alias_title"), self._("dlg_alias_prompt").format(name=f"{desc} ({serial})"), actual)
         finally:
             self.dialog_open = False
         if alias is None: return  # Cancelar
