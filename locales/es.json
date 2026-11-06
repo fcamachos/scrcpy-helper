@@ -28,6 +28,8 @@
     "btn_hide_logs": "▼ Ocultar Logs",
     "log_devices": "[INFO] Dispositivos:",
     "log_executing": "[INFO] Ejecutando:",
+    "log_no_device": "[ERROR] No hay ningún dispositivo seleccionado.",
+    "log_exec_error": "[ERROR] No se pudo ejecutar scrcpy:",
     "msg_restart": "Se requiere reiniciar la aplicación",
     "tcpip": "Conexión Wifi (requiere conexión USB al inicio)",
     "lbl_saved": "Guardado"

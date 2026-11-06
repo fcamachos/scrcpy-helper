@@ -249,8 +249,14 @@ class ScrcpyGui:
         self.btn_connect = ttk.Button(self.root, textvariable=self.get_text_var("btn_connect"), command=self.start_connection)
         self.btn_connect.pack(pady=15, padx=20, fill="x")
         
-        self.root.bind('<space>', lambda event: self.start_connection())
+        self.root.bind('<space>', self.on_space)
         self.setup_console()
+
+    def on_space(self, event):
+        # Atajo de conexión, salvo si se está escribiendo en un campo de texto
+        if isinstance(event.widget, tk.Misc) and event.widget.winfo_class() in ("Entry", "TEntry", "Text"):
+            return
+        self.start_connection()
 
     def fill_tabs(self):
         # Video
@@ -347,7 +353,10 @@ class ScrcpyGui:
 
     def start_connection(self):
         idx = self.combo.current()
-        if idx == -1: return
+        if idx == -1:
+            if not self.console_visible: self.toggle_console()
+            self.write_log(f"{self._('log_no_device')} adb={shutil.which('adb')} PATH={os.environ.get('PATH', '')}")
+            return
         serial = self.dispositivos[idx][0]
         full_model = self.dispositivos[idx][1]
 
@@ -366,48 +375,50 @@ class ScrcpyGui:
         if "profiles" not in self.saved_data: self.saved_data["profiles"] = {}
         self.saved_data["profiles"][serial] = profile
         save_settings(self.saved_data)
-        
-        self.refresh_devices() 
 
-        if not self.console_visible: self.toggle_console()        
-        threading.Thread(target=self.run_scrcpy, args=(serial, profile.get("last_ip")), daemon=True).start()
+        if not self.console_visible: self.toggle_console()
+        # El hilo recibe una copia de las opciones; no debe leer variables Tk
+        threading.Thread(target=self.run_scrcpy, args=(serial, profile.get("last_ip"), dict(profile)), daemon=True).start()
 
-    def run_scrcpy(self, serial, last_ip):
-        v = self.vars
+    def run_scrcpy(self, serial, last_ip, v):
         cmd = ["scrcpy"]
 
         is_offline = not any(serial == d[0] for d in get_connected_devices())
 
-        if is_offline and v["tcpip"].get() and last_ip:
+        if is_offline and v["tcpip"] and last_ip:
             cmd.extend([f"--tcpip={last_ip}"])
         else:
             cmd.extend(["-s", serial])
-            if v["tcpip"].get(): cmd.append("--tcpip")
+            if v["tcpip"]: cmd.append("--tcpip")
 
         cmd.append("--shortcut-mod=lctrl,rctrl")
 
-        if v["codec_h265"].get(): cmd.append("--video-codec=h265")
-        if v["max_res"].get(): cmd.append(f"-m{v['max_res'].get()}")
-        if v["bitrate"].get(): cmd.append(f"-b{v['bitrate'].get()}M")
-        if v["max_fps"].get(): cmd.append(f"--max-fps={v['max_fps'].get()}")
-        if v["video_camera"].get(): cmd.append("--video-source=camera")
-        if v["no_video"].get(): cmd.append("--no-video")
-        if v["turn_off_screen"].get(): cmd.append("-S")
-        if v["stay_awake"].get(): cmd.append("-w")
-        if v["power_off"].get(): cmd.append("--power-off-on-close")
-        if v["show_touches"].get(): cmd.append("-t")
-        if v["no_control"].get(): cmd.append("-n")
-        if v["no_audio"].get(): cmd.append("--no-audio")
-        if v["mic_source"].get(): cmd.append("--audio-source=mic")
-        if v["prefer_text"].get(): cmd.append("--prefer-text")
-        if v["raw_key"].get(): cmd.append("--raw-key-events")
-        if v["no_repeat"].get(): cmd.append("--no-key-repeat")
+        if v["codec_h265"]: cmd.append("--video-codec=h265")
+        if v["max_res"]: cmd.append(f"-m{v['max_res']}")
+        if v["bitrate"]: cmd.append(f"-b{v['bitrate']}M")
+        if v["max_fps"]: cmd.append(f"--max-fps={v['max_fps']}")
+        if v["video_camera"]: cmd.append("--video-source=camera")
+        if v["no_video"]: cmd.append("--no-video")
+        if v["turn_off_screen"]: cmd.append("-S")
+        if v["stay_awake"]: cmd.append("-w")
+        if v["power_off"]: cmd.append("--power-off-on-close")
+        if v["show_touches"]: cmd.append("-t")
+        if v["no_control"]: cmd.append("-n")
+        if v["no_audio"]: cmd.append("--no-audio")
+        if v["mic_source"]: cmd.append("--audio-source=mic")
+        if v["prefer_text"]: cmd.append("--prefer-text")
+        if v["raw_key"]: cmd.append("--raw-key-events")
+        if v["no_repeat"]: cmd.append("--no-key-repeat")
         
-        extra = v["custom_args"].get().strip()
+        extra = v["custom_args"].strip()
         if extra: cmd.extend(shlex.split(extra))
 
         self.write_log(f"{self._('log_executing')} {' '.join(cmd)}")
-        process = sbp.Popen(cmd, stdout=sbp.PIPE, stderr=sbp.STDOUT, text=True, **get_subprocess_kwargs())
+        try:
+            process = sbp.Popen(cmd, stdout=sbp.PIPE, stderr=sbp.STDOUT, text=True, **get_subprocess_kwargs())
+        except OSError as e:
+            self.write_log(f"{self._('log_exec_error')} {e}. PATH={os.environ.get('PATH', '')}")
+            return
         for line in process.stdout: self.write_log(line.strip())
         process.wait()
         self.root.after(0, lambda: self.btn_connect.state(['!disabled']))

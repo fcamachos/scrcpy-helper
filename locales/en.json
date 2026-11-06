@@ -28,6 +28,8 @@
     "btn_hide_logs": "▼ Hide Logs",
     "log_devices": "[INFO] Devices:",
     "log_executing": "[INFO] Executing:",
+    "log_no_device": "[ERROR] No device selected.",
+    "log_exec_error": "[ERROR] Could not run scrcpy:",
     "msg_restart": "Application restart is required to apply changes.",
     "tcpip": "Wifi connection (requieres USB connection at first)",
     "lbl_saved": "Saved"

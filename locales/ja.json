@@ -28,6 +28,8 @@
     "btn_hide_logs": "▼ ログを非表示",
     "log_devices": "[INFO] デバイス:",
     "log_executing": "[INFO] 実行中:",
+    "log_no_device": "[ERROR] デバイスが選択されていません。",
+    "log_exec_error": "[ERROR] scrcpyを実行できませんでした:",
     "msg_restart": "変更を適用するにはアプリケーションの再起動が必要です。",
     "tcpip": "Wi-Fi接続(初回はUSB接続が必要です)",
     "lbl_saved": "Saved"
