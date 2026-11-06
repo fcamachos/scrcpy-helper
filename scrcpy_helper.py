@@ -1,7 +1,7 @@
 import subprocess as sbp
 import shlex
 import tkinter as tk
-from tkinter import ttk, scrolledtext
+from tkinter import ttk, scrolledtext, messagebox
 import json
 from pathlib import Path 
 import threading
@@ -39,13 +39,36 @@ def save_settings(settings):
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
     with open(CONFIG_FILE, "w") as f: json.dump(settings, f)
 
-def get_connected_devices():
+def scan_devices():
+    """Devuelve (dispositivos, problema); problema es None o (tipo, detalle, excepción)."""
     try:
         resultado = sbp.run(['adb', 'devices', '-l'], capture_output=True, text=True, **get_subprocess_kwargs())
-        lineas = resultado.stdout.strip().split('\n')[1:]
-        return [(l.split()[0], next((p.split(':')[1] for p in l.split() if p.startswith('model:')), "Desconocido").replace('_', ' ')) 
-                for l in lineas if l.strip() and "device " in l]
-    except: return []
+    except FileNotFoundError as e:
+        return [], ("adb_missing", f"adb={shutil.which('adb')} PATH={os.environ.get('PATH', '')}", type(e).__name__)
+    except OSError as e:
+        return [], ("adb_failed", str(e), type(e).__name__)
+    if resultado.returncode != 0:
+        return [], ("adb_failed", f"exit={resultado.returncode} {resultado.stderr.strip()}", "")
+    dispositivos, problema = [], None
+    for l in resultado.stdout.strip().split('\n')[1:]:
+        partes = l.split()
+        if len(partes) < 2: continue
+        serial, estado = partes[0], partes[1]
+        if estado == "device":
+            dispositivos.append((serial, next((p.split(':')[1] for p in partes if p.startswith('model:')), "Desconocido").replace('_', ' ')))
+        elif problema is None and estado in ("unauthorized", "offline"):
+            problema = (f"dev_{estado}", l.strip(), "")
+        elif problema is None and estado == "no" and partes[2:3] == ["permissions"]:
+            problema = ("dev_no_permissions", l.strip(), "")
+    return dispositivos, problema
+
+def get_connected_devices():
+    try: return scan_devices()[0]
+    except Exception: return []
+
+def device_label(desc, serial, alias=None):
+    """«Alias (Modelo)» si hay alias; si no, «Modelo (serial)»."""
+    return f"{alias} ({desc})" if alias else f"{desc} ({serial})"
 
 def get_device_ip(serial):
     try:
@@ -116,6 +139,9 @@ class ScrcpyGui:
     def __init__(self, root):
         self.root = root
         self.log_queue = queue.Queue() 
+        self.error_queue = queue.Queue()  # errores para diálogo; se muestran en el hilo principal
+        self.dialog_open = False
+        self.adb_problem = None
         self.saved_data = load_settings()
         self.console_visible = False
         self.dispositivos = []        
@@ -230,6 +256,7 @@ class ScrcpyGui:
         self.combo.pack(side="left", expand=True, fill="x", padx=(0,5))
         self.combo.bind("<<ComboboxSelected>>", self.on_device_selected)
         ttk.Button(self.combo_frame, text="↻", width=3, command=self.refresh_devices).pack(side="right")
+        ttk.Button(self.combo_frame, text="✎", width=3, command=self.edit_alias).pack(side="right", padx=(0, 5))
 
         self.notebook = ttk.Notebook(self.root)
         self.notebook.pack(padx=20, fill="both", expand=True)
@@ -249,8 +276,14 @@ class ScrcpyGui:
         self.btn_connect = ttk.Button(self.root, textvariable=self.get_text_var("btn_connect"), command=self.start_connection)
         self.btn_connect.pack(pady=15, padx=20, fill="x")
         
-        self.root.bind('<space>', lambda event: self.start_connection())
+        self.root.bind('<space>', self.on_space)
         self.setup_console()
+
+    def on_space(self, event):
+        # Atajo de conexión, salvo si se está escribiendo en un campo de texto
+        if isinstance(event.widget, tk.Misc) and event.widget.winfo_class() in ("Entry", "TEntry", "Text"):
+            return
+        self.start_connection()
 
     def fill_tabs(self):
         # Video
@@ -297,6 +330,17 @@ class ScrcpyGui:
         self.console_frame = ttk.Frame(self.root)
         self.log_area = scrolledtext.ScrolledText(self.console_frame, height=8, state='disabled', bg="#1b1e20", fg="#00ff00", font=("Monospace", 9))
         self.log_area.pack(fill="both", expand=True)
+        # Clic derecho: Copiar / Seleccionar todo, sin habilitar la escritura (el widget sigue 'disabled')
+        self.log_menu = tk.Menu(self.log_area, tearoff=0, bg="#31363b", fg="#eff0f1", activebackground="#3daee9", activeforeground="white")
+        self.log_menu.add_command(command=lambda: self.log_area.event_generate("<<Copy>>"))
+        self.log_menu.add_command(command=lambda: self.log_area.tag_add("sel", "1.0", "end-1c"))
+        self.log_area.bind("<Button-3>", self.show_log_menu)
+
+    def show_log_menu(self, event):
+        # Textos al abrir el menú, por si se cambió el idioma
+        self.log_menu.entryconfigure(0, label=self._("menu_copy"))
+        self.log_menu.entryconfigure(1, label=self._("menu_select_all"))
+        self.log_menu.tk_popup(event.x_root, event.y_root)
 
     def toggle_console(self):
         if self.console_visible: self.console_frame.pack_forget()
@@ -306,16 +350,36 @@ class ScrcpyGui:
     
     def write_log(self, text): self.log_queue.put(text)
 
+    def report_error(self, kind, detail="", exc_name=""):
+        # Seguro desde cualquier hilo: solo encola. kind -> claves err_<kind> y hint_<kind>
+        self.error_queue.put((kind, detail, exc_name))
+
+    def show_error(self, kind, detail="", exc_name=""):
+        # Solo hilo principal. Detalles largos a la consola; tipo y sugerencia al diálogo
+        tipo = self._(f"err_{kind}") + (f" ({exc_name})" if exc_name else "")
+        self.write_log(f"[ERROR] {tipo}" + (f": {detail}" if detail else ""))
+        if not self.console_visible: self.toggle_console()
+        self.dialog_open = True
+        try:
+            messagebox.showerror(f"{self._('app_title')}: {self._(f'err_{kind}')}",
+                                 f"{self._('err_type')} {tipo}\n\n{self._(f'hint_{kind}')}", parent=self.root)
+        finally:
+            self.dialog_open = False
+
     def update_logs(self):
         while not self.log_queue.empty():
             msg = self.log_queue.get(); self.log_area.configure(state='normal')
             self.log_area.insert(tk.END, msg + "\n"); self.log_area.configure(state='disabled'); self.log_area.see(tk.END)
-        self.root.after(100, self.update_logs)
+        self.root.after(100, self.update_logs)  # antes del diálogo, que bloquea hasta cerrarse
+        # Un diálogo a la vez: Tk destruye el anterior si se abre otro (msgbox.tcl)
+        if not self.dialog_open and not self.error_queue.empty():
+            self.show_error(*self.error_queue.get())
 
     def refresh_devices(self):
         self.saved_data = load_settings() 
         
-        activos = get_connected_devices()
+        activos, self.adb_problem = scan_devices()
+        if self.adb_problem: self.report_error(*self.adb_problem)  # al abrir la app y con ↻
         activos_serials = [d[0] for d in activos]
         
         self.dispositivos = activos.copy()
@@ -326,12 +390,65 @@ class ScrcpyGui:
                 model = data.get("model", "Guardado")
                 self.dispositivos.append((serial, f"{model} 🛜 {data['last_ip']}"))
 
-        self.combo['values'] = [f"{d[1]} ({d[0]})" for d in self.dispositivos]
+        self.combo['values'] = self.combo_labels()
         if self.dispositivos: 
             self.combo.current(0)
             self.on_device_selected() 
         else:
             self.combo.set('')
+
+    def combo_labels(self):
+        profiles = self.saved_data.get("profiles", {})
+        return [device_label(d[1], d[0], profiles.get(d[0], {}).get("alias")) for d in self.dispositivos]
+
+    def ask_text(self, title, prompt, initial=""):
+        """Pide un texto con widgets ttk (mismo fondo y tema que la ventana principal). None = Cancelar."""
+        win = tk.Toplevel(self.root, bg=self.root.cget("bg"))
+        win.title(title); win.resizable(False, False); win.transient(self.root)
+        frm = ttk.Frame(win, padding=15); frm.pack(fill="both", expand=True)
+        ttk.Label(frm, text=prompt, justify="left").pack(anchor="w")
+        var, result = tk.StringVar(value=initial), []
+        entry = ttk.Entry(frm, textvariable=var, width=36); entry.pack(fill="x", pady=10)
+        def close(ok):
+            if ok: result.append(var.get())
+            win.destroy()
+        btns = ttk.Frame(frm); btns.pack(anchor="e")
+        ttk.Button(btns, text=self._("btn_cancel"), command=lambda: close(False)).pack(side="right")
+        ttk.Button(btns, text=self._("btn_ok"), command=lambda: close(True)).pack(side="right", padx=(0, 5))
+        win.bind("<Return>", lambda e: close(True)); win.bind("<Escape>", lambda e: close(False))
+        win.protocol("WM_DELETE_WINDOW", lambda: close(False))
+        win.update_idletasks()  # centrar sobre la ventana principal
+        x = self.root.winfo_rootx() + (self.root.winfo_width() - win.winfo_reqwidth()) // 2
+        y = self.root.winfo_rooty() + (self.root.winfo_height() - win.winfo_reqheight()) // 2
+        win.geometry(f"+{max(x, 0)}+{max(y, 0)}")
+        entry.focus_set(); entry.select_range(0, "end"); entry.icursor("end")
+        win.wait_visibility(); win.grab_set(); win.wait_window()
+        return result[0] if result else None
+
+    def edit_alias(self):
+        idx = self.combo.current()
+        if idx == -1:
+            self.report_error(*(self.adb_problem or ("no_device", f"adb={shutil.which('adb')} PATH={os.environ.get('PATH', '')}", "")))
+            return
+        serial, desc = self.dispositivos[idx]
+        profiles = self.saved_data.setdefault("profiles", {})
+        actual = profiles.get(serial, {}).get("alias", "")
+        self.dialog_open = True  # que update_logs no abra un error encima
+        try:
+            alias = self.ask_text(self._("dlg_alias_title"), self._("dlg_alias_prompt").format(name=f"{desc} ({serial})"), actual)
+        finally:
+            self.dialog_open = False
+        if alias is None: return  # Cancelar
+        alias = alias.strip()[:30]
+        profile = profiles.setdefault(serial, {})
+        if alias: profile["alias"] = alias
+        else:
+            profile.pop("alias", None)
+            if not profile: del profiles[serial]  # vuelve a «nunca conectado»
+        save_settings(self.saved_data)
+        # Sin refresh_devices: solo cambia el texto y se conserva la selección
+        self.combo['values'] = self.combo_labels()
+        self.combo.current(idx)
 
     def on_device_selected(self, event=None):
         idx = self.combo.current()
@@ -339,7 +456,8 @@ class ScrcpyGui:
         serial = self.dispositivos[idx][0]
 
         profiles = self.saved_data.get("profiles", {})
-        profile = profiles.get(serial, self.ui_defaults)
+        # Un perfil puede traer solo "alias": las opciones que falten son las de por defecto
+        profile = {**self.ui_defaults, **profiles.get(serial, {})}
 
         for k, v in self.vars.items():
             if k in profile and k != "language":
@@ -347,11 +465,17 @@ class ScrcpyGui:
 
     def start_connection(self):
         idx = self.combo.current()
-        if idx == -1: return
+        if idx == -1:
+            self.report_error(*(self.adb_problem or ("no_device", f"adb={shutil.which('adb')} PATH={os.environ.get('PATH', '')}", "")))
+            return
         serial = self.dispositivos[idx][0]
         full_model = self.dispositivos[idx][1]
 
         profile = {k: v.get() for k, v in self.vars.items() if k != "language"}
+        try: shlex.split(profile["custom_args"])
+        except ValueError as e:
+            self.report_error("bad_args", f"{profile['custom_args']!r}: {e}", type(e).__name__)
+            return
         profile["model"] = full_model.split(" 🛜")[0].strip()
 
         if profile["tcpip"]:
@@ -364,52 +488,64 @@ class ScrcpyGui:
             profile["last_ip"] = None
 
         if "profiles" not in self.saved_data: self.saved_data["profiles"] = {}
+        alias = self.saved_data["profiles"].get(serial, {}).get("alias")
+        if alias: profile["alias"] = alias  # el perfil se reescribe entero: conservar el alias
         self.saved_data["profiles"][serial] = profile
         save_settings(self.saved_data)
-        
-        self.refresh_devices() 
 
-        if not self.console_visible: self.toggle_console()        
-        threading.Thread(target=self.run_scrcpy, args=(serial, profile.get("last_ip")), daemon=True).start()
+        if not self.console_visible: self.toggle_console()
+        # El hilo recibe una copia de las opciones; no debe leer variables Tk
+        threading.Thread(target=self.run_scrcpy, args=(serial, profile.get("last_ip"), dict(profile)), daemon=True).start()
 
-    def run_scrcpy(self, serial, last_ip):
-        v = self.vars
+    def run_scrcpy(self, serial, last_ip, v):
         cmd = ["scrcpy"]
 
         is_offline = not any(serial == d[0] for d in get_connected_devices())
 
-        if is_offline and v["tcpip"].get() and last_ip:
+        if is_offline and v["tcpip"] and last_ip:
             cmd.extend([f"--tcpip={last_ip}"])
         else:
             cmd.extend(["-s", serial])
-            if v["tcpip"].get(): cmd.append("--tcpip")
+            if v["tcpip"]: cmd.append("--tcpip")
 
         cmd.append("--shortcut-mod=lctrl,rctrl")
 
-        if v["codec_h265"].get(): cmd.append("--video-codec=h265")
-        if v["max_res"].get(): cmd.append(f"-m{v['max_res'].get()}")
-        if v["bitrate"].get(): cmd.append(f"-b{v['bitrate'].get()}M")
-        if v["max_fps"].get(): cmd.append(f"--max-fps={v['max_fps'].get()}")
-        if v["video_camera"].get(): cmd.append("--video-source=camera")
-        if v["no_video"].get(): cmd.append("--no-video")
-        if v["turn_off_screen"].get(): cmd.append("-S")
-        if v["stay_awake"].get(): cmd.append("-w")
-        if v["power_off"].get(): cmd.append("--power-off-on-close")
-        if v["show_touches"].get(): cmd.append("-t")
-        if v["no_control"].get(): cmd.append("-n")
-        if v["no_audio"].get(): cmd.append("--no-audio")
-        if v["mic_source"].get(): cmd.append("--audio-source=mic")
-        if v["prefer_text"].get(): cmd.append("--prefer-text")
-        if v["raw_key"].get(): cmd.append("--raw-key-events")
-        if v["no_repeat"].get(): cmd.append("--no-key-repeat")
+        if v["codec_h265"]: cmd.append("--video-codec=h265")
+        if v["max_res"]: cmd.append(f"-m{v['max_res']}")
+        if v["bitrate"]: cmd.append(f"-b{v['bitrate']}M")
+        if v["max_fps"]: cmd.append(f"--max-fps={v['max_fps']}")
+        if v["video_camera"]: cmd.append("--video-source=camera")
+        if v["no_video"]: cmd.append("--no-video")
+        if v["turn_off_screen"]: cmd.append("-S")
+        if v["stay_awake"]: cmd.append("-w")
+        if v["power_off"]: cmd.append("--power-off-on-close")
+        if v["show_touches"]: cmd.append("-t")
+        if v["no_control"]: cmd.append("-n")
+        if v["no_audio"]: cmd.append("--no-audio")
+        if v["mic_source"]: cmd.append("--audio-source=mic")
+        if v["prefer_text"]: cmd.append("--prefer-text")
+        if v["raw_key"]: cmd.append("--raw-key-events")
+        if v["no_repeat"]: cmd.append("--no-key-repeat")
         
-        extra = v["custom_args"].get().strip()
+        extra = v["custom_args"].strip()
         if extra: cmd.extend(shlex.split(extra))
 
         self.write_log(f"{self._('log_executing')} {' '.join(cmd)}")
-        process = sbp.Popen(cmd, stdout=sbp.PIPE, stderr=sbp.STDOUT, text=True, **get_subprocess_kwargs())
-        for line in process.stdout: self.write_log(line.strip())
-        process.wait()
+        try:
+            process = sbp.Popen(cmd, stdout=sbp.PIPE, stderr=sbp.STDOUT, text=True, **get_subprocess_kwargs())
+        except OSError as e:
+            kind = "scrcpy_missing" if isinstance(e, FileNotFoundError) else "scrcpy_exec"
+            self.report_error(kind, f"{e}. PATH={os.environ.get('PATH', '')}", type(e).__name__)
+            return
+        errores = []
+        for line in process.stdout:
+            self.write_log(line.strip())
+            if line.startswith("ERROR:"): errores.append(line.strip())
+        codigo = process.wait()
+        self.write_log(self._("log_finished").format(code=codigo, name=device_label(v["model"], serial, v.get("alias"))))
+        # Diálogo solo si hay código != 0 Y líneas ERROR: (cerrar la ventana no debe avisar)
+        if codigo != 0 and errores:
+            self.report_error("scrcpy_failed", errores[0], f"exit {codigo}")
         self.root.after(0, lambda: self.btn_connect.state(['!disabled']))
 
 if __name__ == "__main__":
