@@ -1,4 +1,4 @@
-# 📱 Scrcpy-Helper (v1.3)
+# 📱 Scrcpy-Helper (v1.4.0)
 
 Una interfaz gráfica sencilla y ligera construida en Python con Tkinter para gestionar conexiones de [scrcpy](https://github.com/Genymobile/scrcpy?tab=readme-ov-file) con detección dinámica de dispositivos.
 
@@ -15,6 +15,10 @@ Una interfaz gráfica sencilla y ligera construida en Python con Tkinter para ge
 - Se guardan las opciones elegidas previamente en `~/.config/scrcpy-helper`.
 - Botón de recarga para ver nuevos dispositivos conectados.
 - Conexión rápida con tecla "Barra espaciadora"
+- Alias de dispositivos: el botón ✎ asigna un nombre (máx. 30 caracteres) al dispositivo seleccionado; se muestra como «Alias (Modelo)». Dejarlo vacío quita el alias.
+- Errores en cuadro de diálogo con su tipo (adb, dispositivo, argumentos extra, scrcpy) y una sugerencia; los detalles quedan en la consola de logs.
+- Aviso de conexión finalizada en la consola de logs, con el código de salida de scrcpy.
+- Selección estable: al iniciar la conexión, la lista no se recarga y se conserva el dispositivo elegido con sus opciones.
 
 ## 🛠 Requisitos Previos
 
@@ -28,32 +32,48 @@ Una interfaz gráfica sencilla y ligera construida en Python con Tkinter para ge
 
 **Nota**: Recuerda tener activada la Depuración USB en las opciones de desarrollador de tu dispositivo Android.
 
+**Nota sobre el PATH**: `adb` y `scrcpy` deben estar en el PATH de la sesión gráfica. Los lanzadores del menú de aplicaciones no leen `~/.zshrc`, así que un `adb`/`scrcpy` añadido al PATH solo ahí no se encontrará al abrir el programa desde el menú. Solución: instálalos con el gestor de paquetes del sistema (comandos de arriba) o enlázalos en `/usr/local/bin`, por ejemplo:
+
+    sudo ln -s "$(command -v adb)" /usr/local/bin/adb
+    sudo ln -s "$(command -v scrcpy)" /usr/local/bin/scrcpy
+
 ## 📥 Instalación y Uso
 
-- Ve a la sección de Releases y descarga el archivo scrcpy-tool.
+- Ve a la sección de Releases y descarga el archivo `scrcpy-helper-linux` (en Windows, `scrcpy-helper-windows.exe`).
 - Dale permisos de ejecución al archivo:
   
 **Bash**
 
-    chmod +x scrcpy-tool
+    chmod +x scrcpy-helper-linux
 
-    ./scrcpy-tool
+    ./scrcpy-helper-linux
 
 
 **Interfaz Gráfico**
 - Click derecho, propiedades, marcar "es ejecutable"
-- Doble click a `scrcpy-helper`
+- Doble click a `scrcpy-helper-linux`
 
 ## 🛡 Verificación de Integridad
 
 Para garantizar que el archivo no ha sido alterado, puedes verificar su hash SHA-256:
 
-- Descarga el binario y el archivo checksums.txt en la misma carpeta.
+- Descarga el binario y su archivo de suma (`checksum-linux.txt` o `checksum-windows.txt`) en la misma carpeta.
 - Ejecuta:
-    - sha256sum -c checksums.txt
-    - Si todo es correcto, verás: `scrcpy-tool: La correspondencia es exacta`.
+    - sha256sum -c checksum-linux.txt
+    - Si todo es correcto, verás: `scrcpy-helper-linux: La correspondencia es exacta`.
 
 ## Compilación manual
+
+Son los mismos pasos que usa `.github/workflows/build.yml` (Python 3.10).
+
+**Linux**
+
+Requisitos:
+
+    sudo apt install python3-tk patchelf
+    pip install nuitka zstandard
+
+(`build.yml` solo instala `zstandard` en el job de Windows.)
 
 Descarga los archivos fuente y ejecuta:
 
@@ -61,12 +81,35 @@ Descarga los archivos fuente y ejecuta:
     --standalone \
     --onefile \
     --enable-plugin=tk-inter \
+    --include-data-files=ico.png=ico.png \
+    --include-data-dir=locales=locales \
     --linux-icon=ico.png \
     --remove-output \
-    -o scrcpy-helper \
+    -o scrcpy-helper-linux \
     scrcpy_helper.py
 
-## Densinstalación completa
+**Windows** (PowerShell)
+
+Requisitos:
+
+    pip install zstandard nuitka
+
+Ejecuta:
+
+    python -m nuitka `
+    --standalone `
+    --onefile `
+    --enable-plugin=tk-inter `
+    --include-data-files=ico.png=ico.png `
+    --include-data-dir=locales=locales `
+    --windows-icon-from-ico=ico.ico `
+    --windows-console-mode=disable `
+    --assume-yes-for-downloads `
+    --remove-output `
+    -o scrcpy-helper-windows.exe `
+    scrcpy_helper.py
+
+## Desinstalación completa
 Adjunto hay un script `uninstall.sh` el cual se encargará de borrar todo rastro de este programa. 
 
 ## Tabs con opciones
