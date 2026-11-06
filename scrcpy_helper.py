@@ -1,7 +1,7 @@
 import subprocess as sbp
 import shlex
 import tkinter as tk
-from tkinter import ttk, scrolledtext
+from tkinter import ttk, scrolledtext, messagebox
 import json
 from pathlib import Path 
 import threading
@@ -39,13 +39,32 @@ def save_settings(settings):
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
     with open(CONFIG_FILE, "w") as f: json.dump(settings, f)
 
-def get_connected_devices():
+def scan_devices():
+    """Devuelve (dispositivos, problema); problema es None o (tipo, detalle, excepción)."""
     try:
         resultado = sbp.run(['adb', 'devices', '-l'], capture_output=True, text=True, **get_subprocess_kwargs())
-        lineas = resultado.stdout.strip().split('\n')[1:]
-        return [(l.split()[0], next((p.split(':')[1] for p in l.split() if p.startswith('model:')), "Desconocido").replace('_', ' ')) 
-                for l in lineas if l.strip() and "device " in l]
-    except: return []
+    except FileNotFoundError as e:
+        return [], ("adb_missing", f"adb={shutil.which('adb')} PATH={os.environ.get('PATH', '')}", type(e).__name__)
+    except OSError as e:
+        return [], ("adb_failed", str(e), type(e).__name__)
+    if resultado.returncode != 0:
+        return [], ("adb_failed", f"exit={resultado.returncode} {resultado.stderr.strip()}", "")
+    dispositivos, problema = [], None
+    for l in resultado.stdout.strip().split('\n')[1:]:
+        partes = l.split()
+        if len(partes) < 2: continue
+        serial, estado = partes[0], partes[1]
+        if estado == "device":
+            dispositivos.append((serial, next((p.split(':')[1] for p in partes if p.startswith('model:')), "Desconocido").replace('_', ' ')))
+        elif problema is None and estado in ("unauthorized", "offline"):
+            problema = (f"dev_{estado}", l.strip(), "")
+        elif problema is None and estado == "no" and partes[2:3] == ["permissions"]:
+            problema = ("dev_no_permissions", l.strip(), "")
+    return dispositivos, problema
+
+def get_connected_devices():
+    try: return scan_devices()[0]
+    except Exception: return []
 
 def get_device_ip(serial):
     try:
@@ -116,6 +135,9 @@ class ScrcpyGui:
     def __init__(self, root):
         self.root = root
         self.log_queue = queue.Queue() 
+        self.error_queue = queue.Queue()  # errores para diálogo; se muestran en el hilo principal
+        self.dialog_open = False
+        self.adb_problem = None
         self.saved_data = load_settings()
         self.console_visible = False
         self.dispositivos = []        
@@ -312,16 +334,36 @@ class ScrcpyGui:
     
     def write_log(self, text): self.log_queue.put(text)
 
+    def report_error(self, kind, detail="", exc_name=""):
+        # Seguro desde cualquier hilo: solo encola. kind -> claves err_<kind> y hint_<kind>
+        self.error_queue.put((kind, detail, exc_name))
+
+    def show_error(self, kind, detail="", exc_name=""):
+        # Solo hilo principal. Detalles largos a la consola; tipo y sugerencia al diálogo
+        tipo = self._(f"err_{kind}") + (f" ({exc_name})" if exc_name else "")
+        self.write_log(f"[ERROR] {tipo}" + (f": {detail}" if detail else ""))
+        if not self.console_visible: self.toggle_console()
+        self.dialog_open = True
+        try:
+            messagebox.showerror(f"{self._('app_title')}: {self._(f'err_{kind}')}",
+                                 f"{self._('err_type')} {tipo}\n\n{self._(f'hint_{kind}')}", parent=self.root)
+        finally:
+            self.dialog_open = False
+
     def update_logs(self):
         while not self.log_queue.empty():
             msg = self.log_queue.get(); self.log_area.configure(state='normal')
             self.log_area.insert(tk.END, msg + "\n"); self.log_area.configure(state='disabled'); self.log_area.see(tk.END)
-        self.root.after(100, self.update_logs)
+        self.root.after(100, self.update_logs)  # antes del diálogo, que bloquea hasta cerrarse
+        # Un diálogo a la vez: Tk destruye el anterior si se abre otro (msgbox.tcl)
+        if not self.dialog_open and not self.error_queue.empty():
+            self.show_error(*self.error_queue.get())
 
     def refresh_devices(self):
         self.saved_data = load_settings() 
         
-        activos = get_connected_devices()
+        activos, self.adb_problem = scan_devices()
+        if self.adb_problem: self.report_error(*self.adb_problem)  # al abrir la app y con ↻
         activos_serials = [d[0] for d in activos]
         
         self.dispositivos = activos.copy()
@@ -354,13 +396,16 @@ class ScrcpyGui:
     def start_connection(self):
         idx = self.combo.current()
         if idx == -1:
-            if not self.console_visible: self.toggle_console()
-            self.write_log(f"{self._('log_no_device')} adb={shutil.which('adb')} PATH={os.environ.get('PATH', '')}")
+            self.report_error(*(self.adb_problem or ("no_device", f"adb={shutil.which('adb')} PATH={os.environ.get('PATH', '')}", "")))
             return
         serial = self.dispositivos[idx][0]
         full_model = self.dispositivos[idx][1]
 
         profile = {k: v.get() for k, v in self.vars.items() if k != "language"}
+        try: shlex.split(profile["custom_args"])
+        except ValueError as e:
+            self.report_error("bad_args", f"{profile['custom_args']!r}: {e}", type(e).__name__)
+            return
         profile["model"] = full_model.split(" 🛜")[0].strip()
 
         if profile["tcpip"]:
@@ -417,10 +462,17 @@ class ScrcpyGui:
         try:
             process = sbp.Popen(cmd, stdout=sbp.PIPE, stderr=sbp.STDOUT, text=True, **get_subprocess_kwargs())
         except OSError as e:
-            self.write_log(f"{self._('log_exec_error')} {e}. PATH={os.environ.get('PATH', '')}")
+            kind = "scrcpy_missing" if isinstance(e, FileNotFoundError) else "scrcpy_exec"
+            self.report_error(kind, f"{e}. PATH={os.environ.get('PATH', '')}", type(e).__name__)
             return
-        for line in process.stdout: self.write_log(line.strip())
-        process.wait()
+        errores = []
+        for line in process.stdout:
+            self.write_log(line.strip())
+            if line.startswith("ERROR:"): errores.append(line.strip())
+        codigo = process.wait()
+        # Diálogo solo si hay código != 0 Y líneas ERROR: (cerrar la ventana no debe avisar)
+        if codigo != 0 and errores:
+            self.report_error("scrcpy_failed", errores[0], f"exit {codigo}")
         self.root.after(0, lambda: self.btn_connect.state(['!disabled']))
 
 if __name__ == "__main__":
