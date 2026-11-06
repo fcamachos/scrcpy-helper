@@ -1,7 +1,7 @@
 import subprocess as sbp
 import shlex
 import tkinter as tk
-from tkinter import ttk, scrolledtext, messagebox
+from tkinter import ttk, scrolledtext, messagebox, simpledialog
 import json
 from pathlib import Path 
 import threading
@@ -65,6 +65,10 @@ def scan_devices():
 def get_connected_devices():
     try: return scan_devices()[0]
     except Exception: return []
+
+def device_label(desc, serial, alias=None):
+    """«Alias (Modelo)» si hay alias; si no, «Modelo (serial)»."""
+    return f"{alias} ({desc})" if alias else f"{desc} ({serial})"
 
 def get_device_ip(serial):
     try:
@@ -252,6 +256,7 @@ class ScrcpyGui:
         self.combo.pack(side="left", expand=True, fill="x", padx=(0,5))
         self.combo.bind("<<ComboboxSelected>>", self.on_device_selected)
         ttk.Button(self.combo_frame, text="↻", width=3, command=self.refresh_devices).pack(side="right")
+        ttk.Button(self.combo_frame, text="✎", width=3, command=self.edit_alias).pack(side="right", padx=(0, 5))
 
         self.notebook = ttk.Notebook(self.root)
         self.notebook.pack(padx=20, fill="both", expand=True)
@@ -374,12 +379,42 @@ class ScrcpyGui:
                 model = data.get("model", "Guardado")
                 self.dispositivos.append((serial, f"{model} 🛜 {data['last_ip']}"))
 
-        self.combo['values'] = [f"{d[1]} ({d[0]})" for d in self.dispositivos]
+        self.combo['values'] = self.combo_labels()
         if self.dispositivos: 
             self.combo.current(0)
             self.on_device_selected() 
         else:
             self.combo.set('')
+
+    def combo_labels(self):
+        profiles = self.saved_data.get("profiles", {})
+        return [device_label(d[1], d[0], profiles.get(d[0], {}).get("alias")) for d in self.dispositivos]
+
+    def edit_alias(self):
+        idx = self.combo.current()
+        if idx == -1:
+            self.report_error(*(self.adb_problem or ("no_device", f"adb={shutil.which('adb')} PATH={os.environ.get('PATH', '')}", "")))
+            return
+        serial, desc = self.dispositivos[idx]
+        profiles = self.saved_data.setdefault("profiles", {})
+        actual = profiles.get(serial, {}).get("alias", "")
+        self.dialog_open = True  # que update_logs no abra un error encima
+        try:
+            alias = simpledialog.askstring(self._("dlg_alias_title"), self._("dlg_alias_prompt").format(name=f"{desc} ({serial})"),
+                                           initialvalue=actual, parent=self.root)
+        finally:
+            self.dialog_open = False
+        if alias is None: return  # Cancelar
+        alias = alias.strip()[:30]
+        profile = profiles.setdefault(serial, {})
+        if alias: profile["alias"] = alias
+        else:
+            profile.pop("alias", None)
+            if not profile: del profiles[serial]  # vuelve a «nunca conectado»
+        save_settings(self.saved_data)
+        # Sin refresh_devices: solo cambia el texto y se conserva la selección
+        self.combo['values'] = self.combo_labels()
+        self.combo.current(idx)
 
     def on_device_selected(self, event=None):
         idx = self.combo.current()
@@ -387,7 +422,8 @@ class ScrcpyGui:
         serial = self.dispositivos[idx][0]
 
         profiles = self.saved_data.get("profiles", {})
-        profile = profiles.get(serial, self.ui_defaults)
+        # Un perfil puede traer solo "alias": las opciones que falten son las de por defecto
+        profile = {**self.ui_defaults, **profiles.get(serial, {})}
 
         for k, v in self.vars.items():
             if k in profile and k != "language":
@@ -418,6 +454,8 @@ class ScrcpyGui:
             profile["last_ip"] = None
 
         if "profiles" not in self.saved_data: self.saved_data["profiles"] = {}
+        alias = self.saved_data["profiles"].get(serial, {}).get("alias")
+        if alias: profile["alias"] = alias  # el perfil se reescribe entero: conservar el alias
         self.saved_data["profiles"][serial] = profile
         save_settings(self.saved_data)
 
@@ -470,6 +508,7 @@ class ScrcpyGui:
             self.write_log(line.strip())
             if line.startswith("ERROR:"): errores.append(line.strip())
         codigo = process.wait()
+        self.write_log(self._("log_finished").format(code=codigo, name=device_label(v["model"], serial, v.get("alias"))))
         # Diálogo solo si hay código != 0 Y líneas ERROR: (cerrar la ventana no debe avisar)
         if codigo != 0 and errores:
             self.report_error("scrcpy_failed", errores[0], f"exit {codigo}")
