@@ -240,6 +240,11 @@ class ScrcpyGui:
     def _(self, key):
         return self.translations.get(key, f"[{key}]")
 
+    def mix_colors(self, c1, c2, t=0.5):
+        # Mezcla de dos colores de Tk (#rrggbb o nombre): t=0 → c1, t=1 → c2
+        rgb = zip(self.root.winfo_rgb(c1), self.root.winfo_rgb(c2))  # 0-65535 por canal
+        return "#" + "".join(f"{round((a + (b - a) * t) / 257):02x}" for a, b in rgb)
+
     # --- UI Setup ---
     def setup_ui(self):
         self.logo_frame = ttk.Frame(self.root)
@@ -248,9 +253,22 @@ class ScrcpyGui:
         try:            
             img_path = get_resource_path("ico.png")       
             self.logo_img = tk.PhotoImage(file=img_path)
-            tk.Label(self.logo_frame, image=self.logo_img, bg="#232629").pack()
+            logo = tk.Label(self.logo_frame, image=self.logo_img, bg="#232629")
+            logo.pack()
         except Exception:
+            logo = None
             tk.Label(self.logo_frame, text="📱 SCRCPY HELPER", font=("Inter", 16, "bold"), bg="#232629", fg="#3daee9").pack()
+
+        # Versión bajo el icono, atenuada: Tk no tiene texto semitransparente, se mezcla el color
+        # de texto del tema con el fondo de la ventana (55 % / 45 %: con 50 % el contraste es 4,45:1, < 4,5)
+        apagado = self.mix_colors(self.style.lookup("TLabel", "foreground"), self.root.cget("bg"), 0.45)
+        self.lbl_version = ttk.Label(self.logo_frame, text=f"v{__version__}", font=("Inter", 8), foreground=apagado)
+        if logo is not None:
+            # ico.png (256x256) es transparente desde la fila 199: la versión va en esa franja
+            # (y=204 cuenta el borde de 1 px del Label), con place, para no quitar altura a las pestañas ni a la consola
+            self.lbl_version.place(in_=logo, relx=0.5, y=204, anchor="n")
+        else:
+            self.lbl_version.pack()
 
         top = ttk.Frame(self.root)
         top.pack(pady=10, padx=20, fill="x")
