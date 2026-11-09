@@ -1,3 +1,5 @@
+__version__ = "1.4.1"
+
 import subprocess as sbp
 import shlex
 import tkinter as tk
@@ -10,6 +12,7 @@ import os
 import sys
 import shutil
 import stat 
+import webbrowser
 
 # --- Configuración de Persistencia ---
 if os.name == 'nt': 
@@ -18,6 +21,8 @@ else:
     CONFIG_DIR = Path.home() / ".config" / "scrcpy-helper"
 
 CONFIG_FILE = CONFIG_DIR / "config.json"
+REPO_URL = "https://github.com/fcamachos/scrcpy-helper"  # remote origin
+LICENSE_NAME = "MIT License"  # primera línea de LICENSE (no se empaqueta en el binario)
 
 def get_subprocess_kwargs():
     kwargs = {}
@@ -205,13 +210,17 @@ class ScrcpyGui:
             self.update_ui_texts()
 
     def update_ui_texts(self):
-        self.root.title(self._("app_title"))
+        # Versión solo en la ventana principal; los diálogos de error usan app_title sin versión
+        titulo = f"{self._('app_title')} v{__version__}"
+        self.root.title(titulo)
+        self.lbl_about_name.config(text=titulo)
         
         # Pestañas del Notebook (No soportan StringVar, se actualizan directo)
         self.notebook.tab(0, text=self._("tab_video"))
         self.notebook.tab(1, text=self._("tab_audio"))
         self.notebook.tab(2, text=self._("tab_keys"))
         self.notebook.tab(3, text=self._("tab_adv"))
+        self.notebook.tab(4, text=self._("tab_about"))
 
         # Actualizar TODAS las variables reactivas 
         for json_key, var_obj in self.i18n_vars.items():
@@ -231,6 +240,11 @@ class ScrcpyGui:
     def _(self, key):
         return self.translations.get(key, f"[{key}]")
 
+    def mix_colors(self, c1, c2, t=0.5):
+        # Mezcla de dos colores de Tk (#rrggbb o nombre): t=0 → c1, t=1 → c2
+        rgb = zip(self.root.winfo_rgb(c1), self.root.winfo_rgb(c2))  # 0-65535 por canal
+        return "#" + "".join(f"{round((a + (b - a) * t) / 257):02x}" for a, b in rgb)
+
     # --- UI Setup ---
     def setup_ui(self):
         self.logo_frame = ttk.Frame(self.root)
@@ -239,9 +253,22 @@ class ScrcpyGui:
         try:            
             img_path = get_resource_path("ico.png")       
             self.logo_img = tk.PhotoImage(file=img_path)
-            tk.Label(self.logo_frame, image=self.logo_img, bg="#232629").pack()
+            logo = tk.Label(self.logo_frame, image=self.logo_img, bg="#232629")
+            logo.pack()
         except Exception:
+            logo = None
             tk.Label(self.logo_frame, text="📱 SCRCPY HELPER", font=("Inter", 16, "bold"), bg="#232629", fg="#3daee9").pack()
+
+        # Versión bajo el icono, atenuada: Tk no tiene texto semitransparente, se mezcla el color
+        # de texto del tema con el fondo de la ventana (55 % / 45 %: con 50 % el contraste es 4,45:1, < 4,5)
+        apagado = self.mix_colors(self.style.lookup("TLabel", "foreground"), self.root.cget("bg"), 0.45)
+        self.lbl_version = ttk.Label(self.logo_frame, text=f"v{__version__}", font=("Inter", 8), foreground=apagado)
+        if logo is not None:
+            # ico.png (256x256) es transparente desde la fila 199: la versión va en esa franja
+            # (y=204 cuenta el borde de 1 px del Label), con place, para no quitar altura a las pestañas ni a la consola
+            self.lbl_version.place(in_=logo, relx=0.5, y=204, anchor="n")
+        else:
+            self.lbl_version.pack()
 
         top = ttk.Frame(self.root)
         top.pack(pady=10, padx=20, fill="x")
@@ -265,11 +292,13 @@ class ScrcpyGui:
         self.tab_audio = ttk.Frame(self.notebook, padding=15)
         self.tab_keys = ttk.Frame(self.notebook, padding=15)
         self.tab_adv = ttk.Frame(self.notebook, padding=15)
+        self.tab_about = ttk.Frame(self.notebook, padding=15)
 
         self.notebook.add(self.tab_video)
         self.notebook.add(self.tab_audio)
         self.notebook.add(self.tab_keys)
         self.notebook.add(self.tab_adv)
+        self.notebook.add(self.tab_about)
 
         self.fill_tabs()
 
@@ -323,6 +352,28 @@ class ScrcpyGui:
         self.combo_lang = ttk.Combobox(f_ad, values=["es", "en", "ja"], state="readonly", textvariable=self.vars["language"])
         self.combo_lang.pack(fill="x", pady=5)
         self.combo_lang.bind("<<ComboboxSelected>>", self.on_language_change)
+
+        # Acerca de (sin llamadas a adb ni a scrcpy)
+        f_ab = self.tab_about
+        self.lbl_about_name = ttk.Label(f_ab, font=("Inter", 12, "bold"))
+        self.lbl_about_name.pack(anchor="w", pady=(0, 10))
+        ttk.Label(f_ab, textvariable=self.get_text_var("lbl_about_repo"), font=("Inter", 8, "bold")).pack(anchor="w")
+        self.lbl_repo = ttk.Label(f_ab, text=REPO_URL, foreground="#3daee9", cursor="hand2", font=("Inter", 10, "underline"))
+        self.lbl_repo.pack(anchor="w", pady=(0, 8))
+        self.lbl_repo.bind("<Button-1>", self.open_repo)
+        ttk.Label(f_ab, textvariable=self.get_text_var("lbl_about_license"), font=("Inter", 8, "bold")).pack(anchor="w")
+        ttk.Label(f_ab, text=LICENSE_NAME).pack(anchor="w", pady=(0, 8))
+        ttk.Label(f_ab, textvariable=self.get_text_var("lbl_about_config"), font=("Inter", 8, "bold")).pack(anchor="w")
+        ttk.Label(f_ab, text=str(CONFIG_FILE), wraplength=480).pack(anchor="w")
+
+    def open_repo(self, event=None):
+        # Sin excepciones hacia Tk: si no hay navegador, se avisa en la consola
+        try:
+            if webbrowser.open(REPO_URL): return
+            motivo = ""
+        except Exception as e:
+            motivo = f" ({type(e).__name__}: {e})"
+        self.write_log(f"{self._('log_open_failed')} {REPO_URL}{motivo}")
 
     def setup_console(self):
         self.btn_toggle_console = tk.Button(self.root, bg="#31363b", fg="#eff0f1", relief="flat", command=self.toggle_console)
@@ -545,11 +596,20 @@ class ScrcpyGui:
         self.write_log(self._("log_finished").format(code=codigo, name=device_label(v["model"], serial, v.get("alias"))))
         # Diálogo solo si hay código != 0 Y líneas ERROR: (cerrar la ventana no debe avisar)
         if codigo != 0 and errores:
-            self.report_error("scrcpy_failed", errores[0], f"exit {codigo}")
+            # La última: la primera puede ser un aviso inofensivo (p. ej. «Could not create VA-API device»)
+            self.report_error("scrcpy_failed", errores[-1], f"exit {codigo}")
         self.root.after(0, lambda: self.btn_connect.state(['!disabled']))
 
-if __name__ == "__main__":
+def main():
     setup_linux_desktop_entry()
     root = tk.Tk(className="ScrcpyHelper")
     app = ScrcpyGui(root)
-    root.mainloop()
+    try:
+        root.mainloop()
+    finally:
+        # Liberar la PhotoImage ahora, con tkinter intacto: si se libera en el apagado del
+        # intérprete (binario de Nuitka), Image.__del__ puede ver TclError = None (TypeError)
+        app.logo_img = None
+
+if __name__ == "__main__":
+    main()

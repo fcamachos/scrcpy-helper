@@ -13,6 +13,15 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Check tag matches __version__
+        run: |
+          VERSION=$(sed -n 's/^__version__ = "\(.*\)"$/\1/p' scrcpy_helper.py)
+          if [ "v$VERSION" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::La etiqueta $GITHUB_REF_NAME no coincide con __version__ = \"$VERSION\" de scrcpy_helper.py"
+            exit 1
+          fi
+          echo "Etiqueta $GITHUB_REF_NAME = __version__ $VERSION"
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
